@@ -2,39 +2,47 @@ import React, { useState } from 'react';
 import { Button, List, ListItem, ListItemText, Typography } from '@mui/material';
 import axios from 'axios';
 
-function DocumentList() {
-  const [files, setFiles] = useState([]);
+function DocumentList({ onMainPointClick }) {
+  const [files, setFiles] = useState([]); // Each item will be { file: File, summary: string }
 
-  const handleFileChange = (event) => {
-    const newFiles = Array.from(event.target.files);
-    setFiles([...files, ...newFiles]);
-    handleUpload(newFiles);
-  };
-
-  const handleUpload = async (filesToUpload) => {
+  const uploadAndSummarize = async (fileToUpload) => {
     const formData = new FormData();
-    filesToUpload.forEach(file => {
-      formData.append('file', file);
-    });
+    formData.append('file', fileToUpload);
 
     try {
-      await axios.post('http://localhost:3001/upload', formData, {
+      const response = await axios.post('http://localhost:5000/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
-      console.log('Files uploaded successfully');
+      return response.data; // Return the full response data including summary and fullText
     } catch (error) {
-      console.error('Error uploading files:', error);
+      console.error('Error uploading file:', error);
+      return null;
     }
   };
 
-  const handleSummarize = async (file) => {
-    try {
-      const response = await axios.post('http://localhost:3001/summarize', { fileName: file.name });
-      alert(`Summary for ${file.name}:\n\n${response.data.summary}`);
-    } catch (error) {
-      console.error('Error summarizing file:', error);
+  const handleFileChange = async (event) => {
+    const selectedFiles = Array.from(event.target.files);
+    for (const file of selectedFiles) {
+      // Optimistically add file to list with a "Summarizing..." placeholder and initial fullText
+      setFiles(prevFiles => [...prevFiles, { file: file, summary: "Summarizing...", fullText: "" }]);
+
+      const summary = await uploadAndSummarize(file);
+      if (summary) {
+        setFiles(prevFiles =>
+          prevFiles.map(item =>
+            item.file === file ? { ...item, summary: summary.summary, fullText: summary.fullText } : item
+          )
+        );
+      } else {
+        // If summary fails, update the placeholder to an error message
+        setFiles(prevFiles =>
+          prevFiles.map(item =>
+            item.file === file ? { ...item, summary: "Failed to summarize." } : item
+          )
+        );
+      }
     }
   };
 
@@ -54,10 +62,25 @@ function DocumentList() {
         </Button>
       </label>
       <List>
-        {files.map((file, index) => (
+        {files.map((item, index) => (
           <ListItem key={index}>
-            <ListItemText primary={file.name} />
-            <Button onClick={() => handleSummarize(file)}>Summarize</Button>
+            <ListItemText primary={item.file.name} />
+            {Array.isArray(item.summary) ? (
+              <List dense disablePadding>
+                {item.summary.map((point, idx) => (
+                  <ListItem
+                    key={idx}
+                    sx={{ pl: 4 }}
+                    button // Make it clickable
+                    onClick={() => onMainPointClick(item.fullText, point)} // Pass full text and specific point
+                  >
+                    <ListItemText secondary={`- ${point}`} />
+                  </ListItem>
+                ))}
+              </List>
+            ) : (
+              <ListItemText secondary={item.summary} />
+            )}
           </ListItem>
         ))}
       </List>

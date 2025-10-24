@@ -13,9 +13,9 @@ app.use(cors());
 app.use(express.json());
 
 // Initialize Gemini / Google Generative AI
-const API_KEY = 'AIzaSyDs6994LIi8-qPzoA1N62qM4msrSuZleSY';
+const API_KEY = 'AIzaSyCG22aB1LmOdAt93vqgDeR4qY8De8jTing';
 const genAI = new GoogleGenerativeAI({ apiKey: API_KEY, apiVersion: 'v1' });
-const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
 // ---------- FILE UPLOAD & PARSING ----------
 app.post("/upload", upload.single("file"), async (req, res) => {
@@ -36,11 +36,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
     fs.unlinkSync(req.file.path); // clean up
 
     // ---------- Generate structured summary ----------
-    const prompt = `
-Summarize the following text into a structured JSON array. 
-Each item should have "heading" and "content" keys. 
-Try to break the text into meaningful subheadings, bullet points, or sections. 
-Respond ONLY with JSON.
+    const prompt = `Please extract and return the main content from the following text.
 
 Text:
 ${text}
@@ -49,16 +45,7 @@ ${text}
     const result = await model.generateContent(prompt);
     const summaryText = result.response.text();
 
-    // Try to parse JSON safely
-    let summaryJSON;
-    try {
-      summaryJSON = JSON.parse(summaryText);
-    } catch (e) {
-      console.warn("Failed to parse JSON, returning raw text");
-      summaryJSON = [{ heading: "Summary", content: summaryText }];
-    }
-
-    res.json({ summary: summaryJSON });
+    res.json({ summary: summaryText });
   } catch (err) {
     console.error("Error processing file:", err);
     res.status(500).json({ error: err.message });
@@ -67,11 +54,16 @@ ${text}
 
 // ---------- GENERAL COMPLETION ENDPOINT ----------
 app.post("/completion", async (req, res) => {
-  const { prompt } = req.body;
+  const { prompt, pdfContent } = req.body;
   if (!prompt) return res.status(400).json({ message: "No prompt provided" });
 
+  let fullPrompt = prompt;
+  if (pdfContent) {
+    fullPrompt = `Given the following document content:\n${pdfContent}\n\n${prompt}`;
+  }
+
   try {
-    const result = await model.generateContent(prompt);
+    const result = await model.generateContent(fullPrompt);
     const content = result.response.text();
     res.json({ content });
   } catch (err) {

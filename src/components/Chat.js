@@ -1,27 +1,48 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Typography, TextField, Button, Paper } from '@mui/material';
 import axios from 'axios';
 
-function Chat() {
+function Chat({ initialPrompt, pdfContent }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [conversation, setConversation] = useState('');
 
-  const handleSend = async () => {
-    if (input.trim() !== '') {
-      const userMessage = { text: input, sender: 'user' };
-      setMessages([...messages, userMessage]);
+  useEffect(() => {
+    if (initialPrompt && pdfContent) {
+      // Clear previous messages and set initial prompt
+      setMessages([{ text: initialPrompt, sender: 'user' }]);
+      setConversation(`User: ${initialPrompt}\nremmacs: `);
+      // Automatically send the initial prompt to the AI
+      handleSend(initialPrompt, pdfContent);
+    } else {
+      // Clear chat if no initial context
+      setMessages([]);
+      setConversation('');
+    }
+  }, [initialPrompt, pdfContent]); // Re-run when initialPrompt or pdfContent changes
 
-      const newConversation = conversation + 'User: ' + input + '\n' + 'remmacs: ';
-      setConversation(newConversation);
+  const handleSend = useCallback(async (promptToSend = input, content = '') => {
+    if (promptToSend.trim() !== '') {
+      const userMessage = { text: promptToSend, sender: 'user' };
+      // Only add to messages if it's not the initial prompt being sent automatically
+      if (!initialPrompt || promptToSend !== initialPrompt) {
+        setMessages(prevMessages => [...prevMessages, userMessage]);
+      }
 
+      let currentConversation = conversation;
+      if (!initialPrompt || promptToSend !== initialPrompt) {
+        currentConversation += `User: ${promptToSend}\nremmacs: `;
+      }
+
+      setConversation(currentConversation);
       setInput('');
 
       try {
         const response = await axios.post(
-          'http://localhost:3001/completion',
+          'http://localhost:3001/completion', // Assuming general completion still uses Node.js backend
           {
-            prompt: newConversation,
+            prompt: currentConversation,
+            pdfContent: content // Pass PDF content if available
           },
           {
             headers: {
@@ -33,7 +54,7 @@ function Chat() {
         if (response.data && response.data.content) {
           const aiMessage = { text: response.data.content, sender: 'ai' };
           setMessages(prevMessages => [...prevMessages, aiMessage]);
-          setConversation(newConversation + response.data.content + '\n');
+          setConversation(currentConversation + response.data.content + '\n');
         } else {
           const errorMessage = { text: 'No response from the server.', sender: 'ai' };
           setMessages(prevMessages => [...prevMessages, errorMessage]);
@@ -44,7 +65,7 @@ function Chat() {
         setMessages(prevMessages => [...prevMessages, errorMessage]);
       }
     }
-  };
+  }, [conversation, initialPrompt, setMessages, setInput]); // Add dependencies
 
   return (
     <div style={{ marginTop: '2rem' }}>
