@@ -1,23 +1,30 @@
-import logo from './logo.svg';
-import './App.css';
+import React from 'react';
+import { AppBar, Toolbar, Typography, Container, Grid } from '@mui/material';
+import DocumentList from './components/DocumentList';
+import NoteEditor from './components/NoteEditor';
+import Chat from './components/Chat';
 
 function App() {
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
+    <div>
+      <AppBar position="static">
+        <Toolbar>
+          <Typography variant="h6">
+            NotebookLM Clone
+          </Typography>
+        </Toolbar>
+      </AppBar>
+      <Container style={{ marginTop: '2rem' }}>
+        <Grid container spacing={3}>
+          <Grid item xs={4}>
+            <DocumentList />
+          </Grid>
+          <Grid item xs={8}>
+            <NoteEditor />
+            <Chat />
+          </Grid>
+        </Grid>
+      </Container>
     </div>
   );
 }
