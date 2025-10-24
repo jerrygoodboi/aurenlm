@@ -71,7 +71,7 @@ function DocumentList({ onMainPointClick }) {
                   <ListItem
                     key={idx}
                     sx={{ pl: 4 }}
-                    button // Make it clickable
+                    button={true} // Make it clickable
                     onClick={() => onMainPointClick(item.fullText, point)} // Pass full text and specific point
                   >
                     <ListItemText secondary={`- ${point}`} />

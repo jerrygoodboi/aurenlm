@@ -22,16 +22,20 @@ function Chat({ initialPrompt, pdfContent }) {
   }, [initialPrompt, pdfContent]); // Re-run when initialPrompt or pdfContent changes
 
   const handleSend = useCallback(async (promptToSend = input, content = '') => {
-    if (promptToSend.trim() !== '') {
+    console.log('Type of promptToSend:', typeof promptToSend);
+    console.log('Value of promptToSend:', promptToSend);
+    if (String(promptToSend).trim() !== '') {
       const userMessage = { text: promptToSend, sender: 'user' };
       // Only add to messages if it's not the initial prompt being sent automatically
       if (!initialPrompt || promptToSend !== initialPrompt) {
         setMessages(prevMessages => [...prevMessages, userMessage]);
       }
 
-      let currentConversation = conversation;
-      if (!initialPrompt || promptToSend !== initialPrompt) {
-        currentConversation += `User: ${promptToSend}\nremmacs: `;
+      let currentConversation;
+      if (initialPrompt && promptToSend === initialPrompt) { // This is the initial prompt from useEffect
+        currentConversation = `User: ${promptToSend}\nremmacs: `;
+      } else { // Subsequent user input
+        currentConversation = conversation + `User: ${promptToSend}\nremmacs: `;
       }
 
       setConversation(currentConversation);
@@ -39,7 +43,7 @@ function Chat({ initialPrompt, pdfContent }) {
 
       try {
         const response = await axios.post(
-          'http://localhost:3001/completion', // Assuming general completion still uses Node.js backend
+          'http://localhost:5000/local_completion', // Now using Python backend for local LLM chat
           {
             prompt: currentConversation,
             pdfContent: content // Pass PDF content if available
