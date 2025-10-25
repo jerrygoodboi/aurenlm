@@ -84,13 +84,20 @@ def upload_file():
 
 def send_post_request(url, data):
     headers = {'Content-Type': 'application/json'}
-    response = requests.post(url, headers=headers, json=data)
-    if response.status_code == 200:
-        return response.json()
-    else:
-        print(f"Request failed with status code: {response.status_code}")
-        print("Response content:")
-        print(response.text)
+    try:
+        response = requests.post(url, headers=headers, json=data)
+        response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
+        
+        try:
+            return response.json()
+        except json.JSONDecodeError:
+            print("Error: Failed to decode JSON response from the model.")
+            print("Response content:")
+            print(response.text)
+            return None
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error: Request to the model failed: {e}")
         return None
 
 def comp(full_prompt_text):
@@ -116,7 +123,7 @@ def comp(full_prompt_text):
             "slot_id": 0,
             "prompt": full_prompt_text # Use the full_prompt_text directly
             }
-    response = send_post_request("http://127.0.0.1:8080/completion", json_request)
+    response = send_post_request("http://100.102.173.88:8080/completion", json_request)
 
     if response:
         if "content" in response:
@@ -173,7 +180,7 @@ Text:
             "slot_id": 0,
             "prompt": summarization_prompt
             }
-    response = send_post_request("http://127.0.0.1:8080/completion", json_request)
+    response = send_post_request("http://100.102.173.88:8080/completion", json_request)
 
     if response and "content" in response:
         try:
@@ -206,8 +213,6 @@ def local_completion():
         full_prompt_text = f"Document Content:\n{pdf_content}\n\n{prompt}"
     
     response_content = comp(full_prompt_text)
-    print(f"Type of response_content from comp: {type(response_content)}")
-    print(f"Value of response_content from comp: {response_content}")
     if response_content:
         return jsonify({"content": response_content})
     else:
