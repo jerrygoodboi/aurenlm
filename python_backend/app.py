@@ -76,9 +76,9 @@ def upload_file():
 
         filtered_text = filter_notes_section(text)
 
-        summary = get_local_llm_summary(filtered_text)
+        summary_text = get_local_llm_summary(filtered_text)
 
-        return jsonify({"summary": summary, "fullText": filtered_text})
+        return jsonify({"summary": summary_text, "fullText": filtered_text})
 
 
 
@@ -102,9 +102,9 @@ def send_post_request(url, data):
 
 def comp(full_prompt_text):
     json_request = {
-            "n_predict": 50,
+            "n_predict": 512,
             "temperature": 0.7,
-            "stop": ["</s>", "remmacs:", "User:"],
+            "stop": ["</s>", "AurenLM:", "User:"],
             "repeat_last_n": 256,
             "repeat_penalty": 1.2,
             "top_k": 40,
@@ -152,16 +152,16 @@ def parse_text_to_list(text):
     return parsed_list if parsed_list else [text] # Return original text as single item if no list format found
 
 def get_local_llm_summary(text_to_summarize):
-    # Construct a prompt for summarization
-    summarization_prompt = f"""Please extract the main points from the following text and return them as a JSON array of strings. Each string in the array should be a main point.
+    # Construct a prompt for a one-paragraph summary
+    summarization_prompt = f"""Provide a detailed summary of the following text. The summary should be a single paragraph, approximately 3 to 5 sentences long, capturing the main ideas and key points.
 
 Text:
 {text_to_summarize}
 """
     json_request = {
-            "n_predict": 50, # Adjust as needed
+            "n_predict": 512, # Increased prediction size for a longer summary
             "temperature": 0.7,
-            "stop": ["</s>", "remmacs:", "User:"],
+            "stop": ["</s>", "AurenLM:", "User:"],
             "repeat_last_n": 256,
             "repeat_penalty": 1.2,
             "top_k": 40,
@@ -183,33 +183,22 @@ Text:
     response = send_post_request("http://100.102.173.88:8080/completion", json_request)
 
     if response and "content" in response:
-        try:
-            # Attempt to parse the response as JSON
-            llm_response_text = response["content"]
-            if llm_response_text.startswith("```json") and llm_response_text.endswith("```"):
-                json_string = llm_response_text[7:-3].strip()
-            else:
-                json_string = llm_response_text.strip()
-            
-            return json.loads(json_string)
-        except (json.JSONDecodeError, KeyError) as e:
-            print(f"Error parsing local LLM response as JSON: {e}")
-            print(f"Raw local LLM response: {llm_response_text}")
-            # Fallback to parsing common list formats
-            return parse_text_to_list(llm_response_text)
+        return response["content"].strip()
     else:
-        return ["Sorry, I couldn\'t get a summary from the local LLM."]
+        return "Sorry, I couldn\'t get a summary from the local LLM."
 
 @app.route("/local_completion", methods=["POST"])
 def local_completion():
     data = request.json
     prompt = data.get("prompt", "")
     pdf_content = data.get("pdfContent", "")
+    is_first_message = data.get("isFirstMessage", False) # Retrieve the flag
+
     if not prompt:
         return jsonify({"message": "No prompt provided"}), 400
     
     full_prompt_text = prompt
-    if pdf_content:
+    if pdf_content and is_first_message: # Only prepend if it's the first message
         full_prompt_text = f"Document Content:\n{pdf_content}\n\n{prompt}"
     
     response_content = comp(full_prompt_text)
@@ -217,6 +206,26 @@ def local_completion():
         return jsonify({"content": response_content})
     else:
         return jsonify({"message": "Error getting completion from local LLM"}), 500
+
+@app.route("/summarize_conversation", methods=["POST"])
+def summarize_conversation():
+    data = request.json
+    conversation_history = data.get("conversation_history", "")
+
+    if not conversation_history:
+        return jsonify({"message": "No conversation history provided"}), 400
+
+    summarization_prompt = f"""Summarize the following conversation history concisely, retaining all key information and context. The summary should be a single paragraph.
+
+Conversation History:
+{conversation_history}
+"""
+    summary = comp(summarization_prompt)
+
+    if summary:
+        return jsonify({"summary": summary})
+    else:
+        return jsonify({"message": "Error summarizing conversation"}), 500
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)

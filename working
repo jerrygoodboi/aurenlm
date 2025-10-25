@@ -1,0 +1,66 @@
+# AurenLM Project Workflow
+
+This document provides a detailed explanation of the AurenLM application's architecture and data flow, from the user interface to the backend processing and language model interaction.
+
+## 1. High-Level Overview
+
+AurenLM is a web application built with a React frontend and a Python Flask backend. It allows users to upload documents, view AI-generated summaries of those documents, and chat with a language model about the document content. The application is designed with a three-panel layout inspired by Google's NotebookLM.
+
+## 2. Frontend (Client-Side)
+
+The frontend is a React application located in the `src/` directory. It uses the Material-UI component library for its user interface.
+
+### Core Components & Layout:
+
+-   **`App.js`**: This is the main component that establishes the three-panel layout using Material-UI's `<Grid>` system.
+    -   **Left Panel (Sources):** Contains the `DocumentList` component.
+    -   **Center Panel (Chat):** Contains the `Chat` component.
+    -   **Right Panel (Studio):** Contains the `Studio` component, which is currently a placeholder.
+
+-   **`DocumentList.js` (Left Panel):**
+    1.  **File Upload:** Provides an "Upload Files" button that allows users to select local documents (PDFs, text files).
+    2.  **Backend Communication:** When a file is uploaded, it sends a `POST` request to the `http://localhost:5000/upload` endpoint on the Python backend.
+    3.  **Display Summaries:** The backend processes the document and returns a list of key summary points. `DocumentList.js` then displays the document's filename with this list of points below it.
+    4.  **Initiate Chat:** Each summary point is clickable. When a user clicks on a point, it calls the `handleMainPointClick` function in `App.js`, passing the full text of the document and the text of the clicked point.
+
+-   **`Chat.js` (Center Panel):**
+    1.  **Context Handling:** When a summary point is clicked in the `DocumentList`, `App.js` passes the document's full text and the summary point as props (`pdfContent` and `contextPrompt`) to the `Chat` component. A `key` prop, generated from this context, ensures that the entire `Chat` component is re-created with a fresh state, effectively starting a new chat session.
+    2.  **Initial State:** The component initializes, clearing any previous messages and waiting for the user to type their first message.
+    3.  **User Interaction:** The user types a question into the input field and clicks "Send".
+    4.  **Prompt Construction:** The `handleSend` function constructs the prompt to be sent to the language model. 
+        -   **For the first message** in a session, it creates a special prompt that includes the context from the clicked summary point (e.g., `Regarding the main point "X", my question is: Y`).
+        -   It prepends a **system prompt** (`"This is a conversation between User and remmacs..."`) to the beginning of the conversation history to guide the model's persona.
+        -   For all subsequent messages, it appends the new user message to the existing conversation history.
+    5.  **Backend Communication:** It sends a `POST` request to the `http://localhost:5000/local_completion` endpoint, sending the constructed prompt and the full document text (`sessionPdfContent`).
+    6.  **Display Conversation:** The component displays the back-and-forth between the user and the AI in a styled chat interface with distinct message bubbles.
+
+## 3. Backend (Server-Side)
+
+The backend is a Python Flask application located in the `python_backend/` directory.
+
+-   **`app.py`**: This file contains the core server logic.
+
+-   **`/upload` Endpoint:**
+    1.  Receives the uploaded file from the frontend.
+    2.  Extracts the text content using `pdfplumber` for PDFs or standard file reading for other text formats.
+    3.  Calls the `get_local_llm_summary()` function with the extracted text.
+    4.  Returns the generated summary points and the full text back to the frontend as a JSON response.
+
+-   **`/local_completion` Endpoint:**
+    1.  Receives the conversation prompt and the full document content (`pdfContent`) from the frontend.
+    2.  It constructs the final prompt text by prepending the document content to the conversation history (`Document Content:
+{pdf_content}
+
+{prompt}`).
+    3.  Calls the `comp()` function to get a response from the language model.
+    4.  Returns the model's response content to the frontend in a JSON object.
+
+## 4. LLM Interaction
+
+The backend communicates with an external, local language model.
+
+-   **`send_post_request()` function:** This is a robust helper function in `app.py` that handles the actual HTTP communication.
+    -   It sends a `POST` request to the hardcoded URL: `http://100.102.173.88:8080/completion`.
+    -   It includes comprehensive error handling to prevent the server from crashing due to network issues or invalid responses from the LLM.
+
+-   **`comp()` and `get_local_llm_summary()` functions:** These functions prepare the JSON payload for the LLM, including the prompt and various generation parameters (temperature, top_k, etc.), before calling `send_post_request()`.

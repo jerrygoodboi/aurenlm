@@ -1,90 +1,85 @@
-import React, { useState } from 'react';
-import { Button, List, ListItem, ListItemText, Typography } from '@mui/material';
-import axios from 'axios';
+import React from 'react';
+import { Button, List, ListItem, ListItemText, Typography, Box, IconButton, Tooltip } from '@mui/material';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 
-function DocumentList({ onMainPointClick }) {
-  const [files, setFiles] = useState([]); // Each item will be { file: File, summary: string }
+function DocumentList({ files, onMainPointClick, onFileUpload, isOpen, togglePanel }) {
 
-  const uploadAndSummarize = async (fileToUpload) => {
-    const formData = new FormData();
-    formData.append('file', fileToUpload);
-
-    try {
-      const response = await axios.post('http://localhost:5000/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-      return response.data; // Return the full response data including summary and fullText
-    } catch (error) {
-      console.error('Error uploading file:', error);
-      return null;
-    }
-  };
-
-  const handleFileChange = async (event) => {
-    const selectedFiles = Array.from(event.target.files);
-    for (const file of selectedFiles) {
-      // Optimistically add file to list with a "Summarizing..." placeholder and initial fullText
-      setFiles(prevFiles => [...prevFiles, { file: file, summary: "Summarizing...", fullText: "" }]);
-
-      const summary = await uploadAndSummarize(file);
-      if (summary) {
-        setFiles(prevFiles =>
-          prevFiles.map(item =>
-            item.file === file ? { ...item, summary: summary.summary, fullText: summary.fullText } : item
-          )
-        );
-      } else {
-        // If summary fails, update the placeholder to an error message
-        setFiles(prevFiles =>
-          prevFiles.map(item =>
-            item.file === file ? { ...item, summary: "Failed to summarize." } : item
-          )
-        );
-      }
-    }
-  };
+  const handleDocumentClick = (fileItem) => {
+    onMainPointClick(fileItem.fullText, null);
+  }
 
   return (
-    <div>
-      <Typography variant="h6">Documents</Typography>
-      <input
-        type="file"
-        multiple
-        onChange={handleFileChange}
-        style={{ display: 'none' }}
-        id="upload-button"
-      />
-      <label htmlFor="upload-button">
-        <Button variant="contained" component="span">
-          Upload Files
-        </Button>
-      </label>
-      <List>
-        {files.map((item, index) => (
-          <ListItem key={index}>
-            <ListItemText primary={item.file.name} />
-            {Array.isArray(item.summary) ? (
-              <List dense disablePadding>
-                {item.summary.map((point, idx) => (
-                  <ListItem
-                    key={idx}
-                    sx={{ pl: 4 }}
-                    button={true} // Make it clickable
-                    onClick={() => onMainPointClick(item.fullText, point)} // Pass full text and specific point
-                  >
-                    <ListItemText secondary={`- ${point}`} />
-                  </ListItem>
-                ))}
-              </List>
-            ) : (
-              <ListItemText secondary={item.summary} />
-            )}
-          </ListItem>
-        ))}
-      </List>
-    </div>
+    <Box 
+      sx={{
+        height: 'calc(100vh - 140px)',
+        overflowY: 'auto',
+        border: '1px solid #e0e0e0',
+        borderRadius: '8px',
+        width: isOpen ? 'auto' : '50px', // Fixed width when collapsed
+        transition: 'width 0.3s ease-in-out',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: isOpen ? 'flex-start' : 'center',
+      }}
+    >
+      <Box sx={{ 
+        display: 'flex',
+        justifyContent: isOpen ? 'space-between' : 'center',
+        alignItems: 'center',
+        p: 1,
+        borderBottom: '1px solid #e0e0e0',
+        width: '100%',
+      }}>
+        {isOpen && <Typography variant="h6" sx={{ pl: 1 }}>Documents</Typography>}
+        <Tooltip title={isOpen ? "Collapse Sources" : "Expand Sources"} placement="right">
+          <IconButton onClick={togglePanel} size="small">
+            {isOpen ? <ChevronLeftIcon /> : <ChevronRightIcon />}
+          </IconButton>
+        </Tooltip>
+      </Box>
+      {isOpen && (
+        <>
+          <Box sx={{ px: 2, pb: 2, pt: 2 }}>
+            <input
+              type="file"
+              multiple
+              onChange={onFileUpload}
+              style={{ display: 'none' }}
+              id="upload-button"
+            />
+            <label htmlFor="upload-button">
+              <Button variant="contained" component="span" fullWidth>
+                Upload Files
+              </Button>
+            </label>
+          </Box>
+          <List>
+            {files.map((item, index) => (
+              <ListItem 
+                key={index} 
+                button 
+                onClick={() => handleDocumentClick(item)}
+                disabled={item.summary === "Summarizing..."}
+              >
+                <ListItemText 
+                  primary={item.file.name} 
+                  primaryTypographyProps={{ 
+                    fontWeight: 'bold',
+                    style: {
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }
+                  }} 
+                  secondary={item.summary === "Summarizing..." ? "Summarizing..." : null}
+                />
+              </ListItem>
+            ))}
+          </List>
+        </>
+      )}
+    </Box>
   );
 }
 

@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Typography, TextField, Button, Paper, Box } from '@mui/material';
 import axios from 'axios';
 
-const systemPrompt = "This is a conversation between User and remmacs, a friendly chatbot. remmacs is helpful, kind, honest, good at writing, and never fails to answer any requests immediately and with precision and remmacs replies within one sentence. ";
+const systemPrompt = "You are AurenLM, a tutor-like chatbot. Your goal is to help users understand their documents. Be helpful, insightful, and ask clarifying questions to guide the user's learning. Respond in a clear and educational manner.";
 
-function Chat({ contextPrompt, pdfContent }) {
+const MAX_CONVERSATION_LENGTH = 2000; // Max characters before summarizing old conversation
+
+function Chat({ contextPrompt, pdfContent, initialMessage }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [conversation, setConversation] = useState(systemPrompt);
@@ -13,15 +15,23 @@ function Chat({ contextPrompt, pdfContent }) {
   const [sessionPdfContent, setSessionPdfContent] = useState('');
   const [sessionContextPrompt, setSessionContextPrompt] = useState('');
 
-  // This effect just sets up the context for a new chat session.
+  // This effect sets up the context for a new chat session.
   useEffect(() => {
-    // When a new context is passed, reset the chat.
-    setMessages([]);
     setConversation(systemPrompt);
-    setInput(''); // Clear input field
+    setInput('');
     setSessionPdfContent(pdfContent || '');
     setSessionContextPrompt(contextPrompt || '');
-  }, [contextPrompt, pdfContent]);
+
+    if (initialMessage) {
+      // If there's an initial message (like a summary), display it from the AI.
+      setMessages([{ text: initialMessage, sender: 'ai' }]);
+      // Add the summary to the conversation history as if the AI said it.
+      setConversation(prev => prev + `AurenLM: ${initialMessage}\n`); // Fixed: AurenLM instead of remmacs
+    } else {
+      // Otherwise, it's a new chat from a clicked point, so clear messages for the user to start.
+      setMessages([]);
+    }
+  }, [contextPrompt, pdfContent, initialMessage]);
 
   const handleSend = async () => {
     if (input.trim() === '') return;
@@ -32,26 +42,44 @@ function Chat({ contextPrompt, pdfContent }) {
 
     let promptForBackend;
     const isFirstMessage = messages.length === 0;
-    let newConversation = conversation;
+    let currentConversationState = conversation; // Use a local variable for current state
 
-    // If it's the first message AND we have a context prompt from the document list
+    // Conditionally summarize old conversation if it gets too long
+    if (currentConversationState.length > MAX_CONVERSATION_LENGTH) {
+      try {
+        const summaryResponse = await axios.post(
+          'http://localhost:5000/summarize_conversation',
+          { conversation_history: currentConversationState },
+          { headers: { 'Content-Type': 'application/json' } }
+        );
+        if (summaryResponse.data && summaryResponse.data.summary) {
+          currentConversationState = systemPrompt + `
+(Previous conversation summarized: ${summaryResponse.data.summary})\n`;
+          setConversation(currentConversationState); // Update state with summarized conversation
+        }
+      } catch (error) {
+        console.error('Error summarizing conversation:', error);
+        // Continue without summarization if there's an error
+      }
+    }
+
+    // Construct the prompt for the current turn
     if (isFirstMessage && sessionContextPrompt) {
       promptForBackend = `Regarding the main point "${sessionContextPrompt}", my question is: ${input}`;
-      newConversation = conversation + `User: ${promptForBackend}\nremmacs: `;
+      currentConversationState += `User: ${promptForBackend}\nAurenLM: `;
     } else {
-      // For subsequent messages, just append the user's input
-      promptForBackend = conversation + `User: ${input}\nremmacs: `;
-      newConversation = promptForBackend;
+      currentConversationState += `User: ${input}\nAurenLM: `;
     }
     
-    setConversation(newConversation);
+    setConversation(currentConversationState); // Update conversation state with new user message
 
     try {
       const response = await axios.post(
         'http://localhost:5000/local_completion',
         {
-          prompt: newConversation, // Use the updated conversation
-          pdfContent: sessionPdfContent
+          prompt: currentConversationState, // Use the updated conversation
+          pdfContent: sessionPdfContent,
+          isFirstMessage: isFirstMessage
         },
         {
           headers: { 'Content-Type': 'application/json' },
