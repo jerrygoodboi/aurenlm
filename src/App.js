@@ -96,7 +96,11 @@ function App() {
             />
           </Grid>
           <Grid item xs={rightGridWidth}>
-            <Studio isOpen={rightPanelOpen} togglePanel={() => setRightPanelOpen(!rightPanelOpen)} />
+            <Studio 
+              isOpen={rightPanelOpen} 
+              togglePanel={() => setRightPanelOpen(!rightPanelOpen)} 
+              sessionPdfContent={chatContext?.fullText}
+            />
           </Grid>
         </Grid>
       </Container>

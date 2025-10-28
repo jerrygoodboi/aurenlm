@@ -97,13 +97,14 @@ def send_post_request(url, data):
             return None
 
     except requests.exceptions.RequestException as e:
-        print(f"Error: Request to the model failed: {e}")
-        return None
+        error_message = f"Error: Request to the model failed: {e}"
+        print(error_message)
+        return error_message
 
-def comp(full_prompt_text):
+def comp(full_prompt_text, temperature=0.7, grammar=""):
     json_request = {
-            "n_predict": 512,
-            "temperature": 0.7,
+            "n_predict": 2048,
+            "temperature": temperature,
             "stop": ["</s>", "AurenLM:", "User:"],
             "repeat_last_n": 256,
             "repeat_penalty": 1.2,
@@ -116,7 +117,7 @@ def comp(full_prompt_text):
             "mirostat": 0,
             "mirostat_tau": 5,
             "mirostat_eta": 0.1,
-            "grammar": "",
+            "grammar": grammar,
             "n_probs": 0,
             "image_data": [],
             "cache_prompt": True,
@@ -125,6 +126,10 @@ def comp(full_prompt_text):
             }
     response = send_post_request("http://100.102.173.88:8080/completion", json_request)
 
+    if isinstance(response, str):
+        return response # It's an error message
+
+    print(f"LLM Response: {response}")
     if response:
         if "content" in response:
             # Ensure the content is a string. If it's an object, convert it to a string.
@@ -133,7 +138,8 @@ def comp(full_prompt_text):
                 return json.dumps(chatbot_response)
             return str(chatbot_response)
         else:
-            print("Chatbot: No response from the server.")
+            print("Chatbot: 'content' key not in response from the server.")
+            return json.dumps(response)
     else:
         print("Request failed. Check the server or URL.")
     return None # Ensure a return value
@@ -226,6 +232,27 @@ Conversation History:
         return jsonify({"summary": summary})
     else:
         return jsonify({"message": "Error summarizing conversation"}), 500
+
+@app.route("/generate-mindmap", methods=["POST"])
+def generate_mindmap():
+    data = request.json
+    full_text = data.get("fullText", "")
+
+    if not full_text:
+        return jsonify({"message": "No text provided for mind map generation"}), 400
+
+    mindmap_prompt = f"""Create a hierarchical mindmap from the following document. The output must be a single JSON object with a 'title' and a 'nodes' array. Each node in the array must have an 'id', a 'label', and a 'children' array. Do not include any notes or explanations outside of the JSON object.
+
+Document:
+{full_text[:4000]}"""
+
+    mindmap_json = get_gemini_response(mindmap_prompt)
+
+    if mindmap_json:
+        print(f"Mindmap JSON from Gemini: {mindmap_json}")
+        return jsonify(mindmap_json)
+    else:
+        return jsonify({"message": "Error generating mind map with Gemini"}), 500
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)

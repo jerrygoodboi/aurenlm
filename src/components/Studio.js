@@ -1,9 +1,78 @@
-import React from 'react';
-import { Paper, Typography, Box, IconButton, Tooltip } from '@mui/material';
+import React, { useState, useCallback } from 'react';
+import { Paper, Typography, Box, IconButton, Tooltip, Button } from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import ReactFlow, { addEdge, applyEdgeChanges, applyNodeChanges } from 'reactflow';
+import 'reactflow/dist/style.css';
+import axios from 'axios';
 
-function Studio({ isOpen, togglePanel }) {
+function Studio({ isOpen, togglePanel, sessionPdfContent }) {
+  const [nodes, setNodes] = useState([]);
+  const [edges, setEdges] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const onNodesChange = useCallback(
+    (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
+    [setNodes]
+  );
+  const onEdgesChange = useCallback(
+    (changes) => setEdges((eds) => applyEdgeChanges(changes, eds)),
+    [setEdges]
+  );
+  const onConnect = useCallback(
+    (connection) => setEdges((eds) => addEdge(connection, eds)),
+    [setEdges]
+  );
+
+  const generateMindmap = async () => {
+    setLoading(true);
+    try {
+      const response = await axios.post('http://localhost:5000/generate-mindmap', {
+        fullText: sessionPdfContent,
+      });
+
+      const mindmapData = response.data;
+      console.log("Mindmap data from backend:", mindmapData);
+
+      const initialNodes = [];
+      const initialEdges = [];
+      let y = 0;
+
+      function traverse(node, parentId = null, level = 0) {
+        if (!node) return;
+
+        const nodeId = node.id;
+        initialNodes.push({
+          id: nodeId,
+          data: { label: node.label },
+          position: { x: level * 250, y: y },
+          type: node.type === 'main' ? 'input' : 'default',
+        });
+
+        if (parentId) {
+          initialEdges.push({ id: `${parentId}-${nodeId}`, source: parentId, target: nodeId, animated: true });
+        }
+
+        y += 100;
+
+        if (node.children && node.children.length > 0) {
+          node.children.forEach(child => traverse(child, nodeId, level + 1));
+        }
+      }
+
+      mindmapData.nodes.forEach(node => traverse(node));
+
+      setNodes(initialNodes);
+      setEdges(initialEdges);
+
+    } catch (error) {
+      console.error("Error generating mind map:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
   return (
     <Box 
       sx={{
@@ -35,8 +104,24 @@ function Studio({ isOpen, togglePanel }) {
       </Box>
       {isOpen && (
         <Paper elevation={3} sx={{ flexGrow: 1, p: 2, width: '100%' }}>
-          {/* Content for the Studio panel can be added here in the future. */}
-          <Typography variant="body2">Studio tools will appear here.</Typography>
+          <Button 
+            variant="contained" 
+            onClick={generateMindmap} 
+            disabled={loading || !sessionPdfContent}
+          >
+            {loading ? 'Generating...' : 'Generate Mind Map'}
+          </Button>
+          <Box sx={{ height: '100%', mt: 2 }}>
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              fitView
+            >
+            </ReactFlow>
+          </Box>
         </Paper>
       )}
     </Box>
