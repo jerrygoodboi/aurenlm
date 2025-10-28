@@ -19,7 +19,7 @@ if not os.path.exists(UPLOAD_FOLDER):
 
 def get_gemini_response(prompt):
     headers = {"Content-Type": "application/json"}
-    data = {"contents": [{"parts": [{"text": prompt}]}]}
+    data = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"maxOutputTokens": 2048}}
     response = requests.post(GEMINI_API_URL, headers=headers, json=data)
 
     if response.status_code == 200:

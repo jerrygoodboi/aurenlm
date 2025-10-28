@@ -7,7 +7,24 @@ import ReactFlow, { addEdge, applyEdgeChanges, applyNodeChanges, Controls, Backg
 import 'reactflow/dist/style.css';
 import axios from 'axios';
 
-function MindmapDialog({ nodes, edges, onNodesChange, onEdgesChange, onConnect, onClose }) {
+function MindmapDialog({ nodes, edges, onNodesChange, onEdgesChange, onConnect, onClose, onNodeClick }) {
+  const onNodeClickHandler = useCallback((event, node) => {
+    const clickedNodeLabel = node.data.label;
+    let parentNodeLabel = "";
+
+    // Find the parent node
+    const parentEdge = edges.find(edge => edge.target === node.id);
+    if (parentEdge) {
+      const parentNode = nodes.find(n => n.id === parentEdge.source);
+      if (parentNode) {
+        parentNodeLabel = parentNode.data.label;
+      }
+    }
+
+    const query = `Discuss what these sources say about ${clickedNodeLabel}${parentNodeLabel ? `, in the larger context of ${parentNodeLabel}` : ""}`;
+    onNodeClick(query);
+  }, [nodes, edges, onNodeClick]);
+
   return (
     <Dialog
       fullScreen
@@ -39,6 +56,7 @@ function MindmapDialog({ nodes, edges, onNodesChange, onEdgesChange, onConnect, 
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onNodeClick={onNodeClickHandler}
           fitView
         >
           <Controls />
@@ -49,7 +67,7 @@ function MindmapDialog({ nodes, edges, onNodesChange, onEdgesChange, onConnect, 
   );
 }
 
-function Studio({ isOpen, togglePanel, sessionPdfContent }) {
+function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery }) {
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -164,6 +182,7 @@ function Studio({ isOpen, togglePanel, sessionPdfContent }) {
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
               onClose={() => setShowMindmapModal(false)}
+              onNodeClick={onMindmapQuery}
             />
           )}
         </Paper>

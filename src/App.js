@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppBar, Toolbar, Typography, Container, Grid } from '@mui/material';
 import DocumentList from './components/DocumentList';
 import Chat from './components/Chat';
@@ -10,6 +10,17 @@ function App() {
   const [files, setFiles] = useState([]);
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
+  const [chatQueryFromMindmap, setChatQueryFromMindmap] = useState(null);
+
+  useEffect(() => {
+    if (chatQueryFromMindmap) {
+      setChatContext(prev => ({
+        ...prev,
+        initialMessage: chatQueryFromMindmap,
+      }));
+      setChatQueryFromMindmap(null); // Clear the query after it's been used
+    }
+  }, [chatQueryFromMindmap]);
 
   const handleMainPointClick = (fullText, mainPoint) => {
     setChatContext({ fullText: fullText, contextPrompt: mainPoint, initialMessage: null });
@@ -100,6 +111,7 @@ function App() {
               isOpen={rightPanelOpen} 
               togglePanel={() => setRightPanelOpen(!rightPanelOpen)} 
               sessionPdfContent={chatContext?.fullText}
+              onMindmapQuery={setChatQueryFromMindmap}
             />
           </Grid>
         </Grid>
