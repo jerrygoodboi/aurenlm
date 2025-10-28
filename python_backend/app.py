@@ -204,7 +204,7 @@ def local_completion():
         return jsonify({"message": "No prompt provided"}), 400
     
     full_prompt_text = prompt
-    if pdf_content and is_first_message: # Only prepend if it's the first message
+    if pdf_content: # Always prepend if pdf_content exists
         full_prompt_text = f"Document Content:\n{pdf_content}\n\n{prompt}"
     
     response_content = comp(full_prompt_text)
