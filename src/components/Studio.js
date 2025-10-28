@@ -1,15 +1,59 @@
 import React, { useState, useCallback } from 'react';
-import { Paper, Typography, Box, IconButton, Tooltip, Button } from '@mui/material';
+import { Paper, Typography, Box, IconButton, Tooltip, Button, Dialog, AppBar, Toolbar } from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
-import ReactFlow, { addEdge, applyEdgeChanges, applyNodeChanges } from 'reactflow';
+import CloseIcon from '@mui/icons-material/Close';
+import ReactFlow, { addEdge, applyEdgeChanges, applyNodeChanges, Controls, Background } from 'reactflow';
 import 'reactflow/dist/style.css';
 import axios from 'axios';
+
+function MindmapDialog({ nodes, edges, onNodesChange, onEdgesChange, onConnect, onClose }) {
+  return (
+    <Dialog
+      fullScreen
+      open={true}
+      onClose={onClose}
+      PaperProps={{
+        sx: { width: '100%', height: '100%', m: 0, maxWidth: 'none', maxHeight: 'none' }
+      }}
+    >
+      <AppBar sx={{ position: 'relative' }}>
+        <Toolbar>
+          <IconButton
+            edge="start"
+            color="inherit"
+            onClick={onClose}
+            aria-label="close"
+          >
+            <CloseIcon />
+          </IconButton>
+          <Typography sx={{ ml: 2, flex: 1 }} variant="h6" component="div">
+            Mind Map
+          </Typography>
+        </Toolbar>
+      </AppBar>
+      <Box sx={{ width: '100%', height: 'calc(100vh - 64px)' }}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onConnect={onConnect}
+          fitView
+        >
+          <Controls />
+          <Background variant="dots" gap={12} size={1} />
+        </ReactFlow>
+      </Box>
+    </Dialog>
+  );
+}
 
 function Studio({ isOpen, togglePanel, sessionPdfContent }) {
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [showMindmapModal, setShowMindmapModal] = useState(false);
 
   const onNodesChange = useCallback(
     (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
@@ -64,6 +108,7 @@ function Studio({ isOpen, togglePanel, sessionPdfContent }) {
 
       setNodes(initialNodes);
       setEdges(initialEdges);
+      setShowMindmapModal(true); // Open the modal after successful generation
 
     } catch (error) {
       console.error("Error generating mind map:", error);
@@ -111,17 +156,16 @@ function Studio({ isOpen, togglePanel, sessionPdfContent }) {
           >
             {loading ? 'Generating...' : 'Generate Mind Map'}
           </Button>
-          <Box sx={{ height: '100%', mt: 2 }}>
-            <ReactFlow
+          {showMindmapModal && (
+            <MindmapDialog
               nodes={nodes}
               edges={edges}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
-              fitView
-            >
-            </ReactFlow>
-          </Box>
+              onClose={() => setShowMindmapModal(false)}
+            />
+          )}
         </Paper>
       )}
     </Box>
