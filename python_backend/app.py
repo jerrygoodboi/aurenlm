@@ -106,23 +106,8 @@ def comp(full_prompt_text, temperature=0.7, grammar=""):
             "n_predict": 2048,
             "temperature": temperature,
             "stop": ["</s>", "AurenLM:", "User:"],
-            "repeat_last_n": 256,
-            "repeat_penalty": 1.2,
-            "top_k": 40,
-            "top_p": 0.5,
-            "tfs_z": 1,
-            "typical_p": 1,
-            "presence_penalty": 0,
-            "frequency_penalty": 0,
-            "mirostat": 0,
-            "mirostat_tau": 5,
-            "mirostat_eta": 0.1,
-            "grammar": grammar,
-            "n_probs": 0,
-            "image_data": [],
-            "cache_prompt": True,
-            "slot_id": 0,
-            "prompt": full_prompt_text # Use the full_prompt_text directly
+            "prompt": full_prompt_text,
+            "grammar": grammar
             }
     response = send_post_request("http://100.102.173.88:8080/completion", json_request)
 
