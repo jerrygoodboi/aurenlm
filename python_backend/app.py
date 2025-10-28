@@ -36,12 +36,12 @@ def get_gemini_response(prompt):
         except (json.JSONDecodeError, KeyError) as e:
             print(f"Error parsing Gemini response as JSON: {e}")
             print(f"Raw Gemini response: {gemini_response_text}")
-            # Fallback to returning raw text as a list with one item
-            return [gemini_response_text]
+            # Return a JSON object with an error message
+            return {"error": f"Error parsing Gemini response: {e}", "raw_response": gemini_response_text}
     else:
         print(f"Gemini API Error: Status Code {response.status_code}")
         print(f"Response Body: {response.text}")
-        return ["Sorry, I couldn't process that request. Check backend logs for details."]
+        return {"error": f"Gemini API Error: Status Code {response.status_code}", "response_body": response.text}
 
 def filter_notes_section(text):
     # This is a placeholder. The actual regex might need to be more sophisticated
@@ -234,10 +234,10 @@ Document:
     mindmap_json = get_gemini_response(mindmap_prompt)
 
     if mindmap_json:
+        if "error" in mindmap_json:
+            return jsonify({"message": mindmap_json["error"], "raw_response": mindmap_json.get("raw_response")}), 500
         print(f"Mindmap JSON from Gemini: {mindmap_json}")
         return jsonify(mindmap_json)
-    else:
-        return jsonify({"message": "Error generating mind map with Gemini"}), 500
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
