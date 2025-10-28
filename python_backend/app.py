@@ -19,7 +19,7 @@ if not os.path.exists(UPLOAD_FOLDER):
 
 def get_gemini_response(prompt):
     headers = {"Content-Type": "application/json"}
-    data = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"maxOutputTokens": 2048}}
+    data = {"contents": [{"parts": [{"text": prompt}]}]}
     response = requests.post(GEMINI_API_URL, headers=headers, json=data)
 
     if response.status_code == 200:
@@ -226,18 +226,38 @@ def generate_mindmap():
     if not full_text:
         return jsonify({"message": "No text provided for mind map generation"}), 400
 
+    json_grammar = r'''
+root ::= object
+value ::= object | array | string | number | ("true" | "false" | "null")
+object ::= "{" ws (string ":" ws value ("," ws string ":" ws value)*)? "}"
+array ::= "[" ws (value ("," ws value)*)? "]"
+string ::= "\"" ([^"\\\x7F\x00-\x1F] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4}))* "\""
+number ::= ("-"? ([0-9] | [1-9] [0-9]*)) ("." [0-9]+)? ([eE] [-+]? [0-9]+)?
+ws ::= [ \t\n]*
+'''
+
     mindmap_prompt = f"""Create a hierarchical mindmap from the following document. The output must be a single JSON object with a 'title' and a 'nodes' array. Each node in the array must have an 'id', a 'label', and a 'children' array. Do not include any notes or explanations outside of the JSON object.
 
 Document:
 {full_text[:4000]}"""
 
-    mindmap_json = get_gemini_response(mindmap_prompt)
+    mindmap_content = comp(mindmap_prompt, temperature=0.3, grammar=json_grammar)
 
-    if mindmap_json:
-        if "error" in mindmap_json:
-            return jsonify({"message": mindmap_json["error"], "raw_response": mindmap_json.get("raw_response")}), 500
-        print(f"Mindmap JSON from Gemini: {mindmap_json}")
-        return jsonify(mindmap_json)
+    if mindmap_content:
+        if isinstance(mindmap_content, str) and mindmap_content.startswith("Error:"):
+            return jsonify({"message": mindmap_content}), 500
 
-if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+        print(f"Mindmap content from LLM: {mindmap_content}")
+        try:
+            # The LLM might return a string that is a JSON object.
+            # We need to parse it to make sure it's valid JSON.
+            if mindmap_content.startswith("```json") and mindmap_content.endswith("```"):
+                mindmap_content = mindmap_content[7:-3].strip()
+            mindmap_json = json.loads(mindmap_content)
+            print(f"Mindmap JSON to be returned: {mindmap_json}")
+            return jsonify(mindmap_json)
+        except json.JSONDecodeError as e:
+            print(f"Error decoding mind map JSON: {e}")
+            return jsonify({"message": "Error decoding mind map from LLM response"}), 500
+    else:
+        return jsonify({"message": "Error generating mind map"}), 500
