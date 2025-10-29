@@ -76,17 +76,16 @@ def upload_file():
 
         filtered_text = filter_notes_section(text)
 
-        summary_text = get_local_llm_summary(filtered_text)
+        # summary_text = get_local_llm_summary(filtered_text) # Commented out for now
 
-        return jsonify({"summary": summary_text, "fullText": filtered_text})
-
+        return jsonify({"summary": "Summary generation commented out", "fullText": filtered_text})
 
 
 def send_post_request(url, data):
     headers = {'Content-Type': 'application/json'}
     try:
         response = requests.post(url, headers=headers, json=data)
-        response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
+        response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx) 
         
         try:
             return response.json()
@@ -103,7 +102,7 @@ def send_post_request(url, data):
 
 def comp(full_prompt_text, temperature=0.7, grammar=""):
     json_request = {
-            "n_predict": 2048,
+            "n_predict": 4096,
             "temperature": temperature,
             "stop": ["</s>", "AurenLM:", "User:"],
             "prompt": full_prompt_text,
@@ -176,7 +175,7 @@ Text:
     if response and "content" in response:
         return response["content"].strip()
     else:
-        return "Sorry, I couldn\'t get a summary from the local LLM."
+        return "Sorry, I couldn't get a summary from the local LLM."
 
 @app.route("/local_completion", methods=["POST"])
 def local_completion():
@@ -231,15 +230,15 @@ root ::= object
 value ::= object | array | string | number | ("true" | "false" | "null")
 object ::= "{" ws (string ":" ws value ("," ws string ":" ws value)*)? "}"
 array ::= "[" ws (value ("," ws value)*)? "]"
-string ::= "\"" ([^"\\\x7F\x00-\x1F] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4}))* "\""
+string ::= "\"" ([^"\\\x7F\x00-\x1F] | "\\" ([\"\\/bfnrt] | "u" [0-9a-fA-F]{4}))* "\""
 number ::= ("-"? ([0-9] | [1-9] [0-9]*)) ("." [0-9]+)? ([eE] [-+]? [0-9]+)?
 ws ::= [ \t\n]*
 '''
 
-    mindmap_prompt = f"""Create a hierarchical mindmap from the following document. The output must be a single JSON object with a 'title' and a 'nodes' array. Each node in the array must have an 'id', a 'label', and a 'children' array. Do not include any notes or explanations outside of the JSON object.
+    mindmap_prompt = f"""Generate a hierarchical mindmap from the following document. Your response MUST be a single JSON object, and ONLY the JSON object. The JSON object must have a 'title' key and a 'nodes' array. Each node in the 'nodes' array must have an 'id', a 'label', and a 'children' array. The 'children' array should contain nested nodes following the same structure. Ensure the JSON is perfectly formed and contains no other text or markdown outside of the JSON object.
 
 Document:
-{full_text[:4000]}"""
+{full_text[:1000]}"""
 
     mindmap_content = comp(mindmap_prompt, temperature=0.3, grammar=json_grammar)
 
@@ -261,3 +260,6 @@ Document:
             return jsonify({"message": "Error decoding mind map from LLM response"}), 500
     else:
         return jsonify({"message": "Error generating mind map"}), 500
+
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)
