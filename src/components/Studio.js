@@ -7,10 +7,12 @@ import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
 import ReactFlow, { addEdge, applyEdgeChanges, applyNodeChanges, Controls, Background, Handle, Position } from 'reactflow';
 import 'reactflow/dist/style.css';
 import axios from 'axios';
+import { useTheme } from '@mui/material/styles';
 
 // Custom Node Component for ReactFlow
 const CustomMindmapNode = ({ data }) => {
   const { label, hasChildren, isCollapsed, onToggleCollapse, onNodeClick } = data;
+  const theme = useTheme();
 
   const handleNodeClick = useCallback(() => {
     onNodeClick(label); // Pass the label of the clicked node
@@ -19,10 +21,10 @@ const CustomMindmapNode = ({ data }) => {
   return (
     <Box
       sx={{
-        border: '1px solid #ccc',
+        border: `1px solid ${theme.palette.divider}`,
         borderRadius: '5px',
         padding: '10px',
-        backgroundColor: hasChildren ? '#e0f7fa' : 'white', // Light blue for parent nodes
+        backgroundColor: theme.palette.background.paper,
         display: 'flex',
         alignItems: 'center',
         cursor: 'pointer',

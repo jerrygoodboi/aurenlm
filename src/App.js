@@ -1,9 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { AppBar, Toolbar, Typography, Container, Box } from '@mui/material';
+import React, { useState, useEffect, useContext } from 'react';
+import { AppBar, Toolbar, Typography, Container, Box, IconButton } from '@mui/material';
+import Brightness4Icon from '@mui/icons-material/Brightness4';
+import Brightness7Icon from '@mui/icons-material/Brightness7';
 import DocumentList from './components/DocumentList';
 import Chat from './components/Chat';
 import Studio from './components/Studio';
 import axios from 'axios';
+import { ThemeContext } from './ThemeContext';
 
 function App() {
   const [chatContext, setChatContext] = useState(null);
@@ -12,6 +15,7 @@ function App() {
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [chatQueryFromMindmap, setChatQueryFromMindmap] = useState(null);
   const [fileUploadSummary, setFileUploadSummary] = useState(null); // New state for file upload summary
+  const { mode, toggleTheme } = useContext(ThemeContext);
 
   useEffect(() => {
     if (chatQueryFromMindmap) {
@@ -80,9 +84,12 @@ function App() {
     <>
       <AppBar position="static">
         <Toolbar>
-          <Typography variant="h6">
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
             AurenLM
           </Typography>
+          <IconButton sx={{ ml: 1 }} onClick={toggleTheme} color="inherit">
+            {mode === 'dark' ? <Brightness7Icon /> : <Brightness4Icon />}
+          </IconButton>
         </Toolbar>
       </AppBar>
       <Container maxWidth={false} disableGutters sx={{
@@ -92,7 +99,6 @@ function App() {
         margin: 0,
         padding: 0,
         overflow: 'hidden',
-        backgroundColor: '#f5f5f5', // Light, airy background
         gap: '16px', // Equal breathing space between sections
         boxSizing: 'border-box',
       }}>
@@ -103,7 +109,6 @@ function App() {
           flexShrink: 0,
           overflowY: 'auto',
           overflowX: 'hidden', // Hide horizontal overflow when collapsed
-          backgroundColor: '#ffffff',
           borderRadius: '8px',
           boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)',
           padding: leftPanelOpen ? '16px' : '0', // No padding when collapsed
@@ -126,7 +131,6 @@ function App() {
           overflowY: 'auto',
           boxSizing: 'border-box',
           minWidth: 0, // Allow flex item to shrink below its content size
-          backgroundColor: '#ffffff',
           borderRadius: '8px',
           boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)',
           padding: '16px',
@@ -152,7 +156,6 @@ function App() {
           flexShrink: 0,
           overflowY: 'auto',
           overflowX: 'hidden', // Hide horizontal overflow when collapsed
-          backgroundColor: '#ffffff',
           borderRadius: '8px',
           boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)',
           padding: rightPanelOpen ? '16px' : '0', // No padding when collapsed

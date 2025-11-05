@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Typography, TextField, Button, Paper, Box } from '@mui/material';
+import { Typography, TextField, Button, Paper, Box, useTheme } from '@mui/material';
 import axios from 'axios';
 
 const systemPrompt = "You are AurenLM, a tutor-like chatbot. Your goal is to help users understand their documents. Be helpful, insightful, and ask clarifying questions to guide the user's learning. Respond in a clear and educational manner.";
@@ -10,6 +10,7 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [conversation, setConversation] = useState(systemPrompt);
+  const theme = useTheme();
   
   // State to hold the context for the entire session
   const [sessionPdfContent, setSessionPdfContent] = useState('');
@@ -134,9 +135,10 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
               variant="outlined"
               sx={{
                 p: 1.5,
-                backgroundColor: message.sender === 'user' ? 'primary.light' : 'grey.200',
+                backgroundColor: message.sender === 'user' ? theme.palette.primary.main : theme.palette.background.paper,
                 borderRadius: '10px',
                 maxWidth: '70%',
+                color: message.sender === 'user' ? theme.palette.primary.contrastText : theme.palette.text.primary,
               }}
             >
               <Typography variant="body1">{message.text}</Typography>
