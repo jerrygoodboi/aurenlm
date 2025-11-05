@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { Paper, Typography, Box, IconButton, Tooltip, Button } from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
@@ -22,10 +22,11 @@ const CustomMindmapNode = ({ data }) => {
         border: '1px solid #ccc',
         borderRadius: '5px',
         padding: '10px',
-        backgroundColor: 'white',
+        backgroundColor: hasChildren ? '#e0f7fa' : 'white', // Light blue for parent nodes
         display: 'flex',
         alignItems: 'center',
         cursor: 'pointer',
+        fontWeight: hasChildren ? 'bold' : 'normal',
       }}
       onClick={handleNodeClick}
     >
@@ -41,16 +42,16 @@ const CustomMindmapNode = ({ data }) => {
   );
 };
 
-const nodeTypes = {
-  customMindmapNode: CustomMindmapNode,
-};
-
 function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery }) {
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showMindmap, setShowMindmap] = useState(false); // Controls visibility of the mindmap section
   const [fullMindmapData, setFullMindmapData] = useState(null); // Stores the full hierarchical data
+
+  const nodeTypes = useMemo(() => ({
+    customMindmapNode: CustomMindmapNode,
+  }), []);
 
   const onNodesChange = useCallback(
     (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
@@ -131,12 +132,14 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery }) {
 
     let currentY = 0;
 
-    const traverseAndBuild = (node, parentId = null, level = 0) => {
+    const traverseAndBuild = (node, parentId = null, level = 0, parentIsCollapsed = false) => {
       if (!node) return;
 
-      const isVisible = !node.isCollapsed || level === 0; // Only show top-level or expanded nodes
+      // A node is rendered if its parent is not collapsed.
+      // The `isCollapsed` property on the node data will be used by the CustomMindmapNode to show/hide children.
+      const shouldRenderNode = !parentIsCollapsed;
 
-      if (isVisible) {
+      if (shouldRenderNode) {
         const xPosition = level * 250; // X position based on level
         const yPosition = currentY; // Use currentY for Y position
 
@@ -165,13 +168,14 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery }) {
         currentY += 70; // Increment Y for the next node
       }
 
+      // Recursively call for children only if the current node is not collapsed
       if (node.children && !node.isCollapsed) {
-        node.children.forEach(child => traverseAndBuild(child, node.id, level + 1));
+        node.children.forEach(child => traverseAndBuild(child, node.id, level + 1, node.isCollapsed));
       }
     };
 
     if (data && data.nodes) {
-      data.nodes.forEach(node => traverseAndBuild(node));
+      data.nodes.forEach(node => traverseAndBuild(node, null, 0, false)); // Initial call for top-level nodes
     }
     return { rfNodes, rfEdges };
   }, [onNodeClickHandler, toggleNodeCollapse]);
@@ -246,7 +250,7 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery }) {
         </Tooltip>
       </Box>
       {isOpen && (
-        <Paper elevation={3} sx={{ flexGrow: 1, p: 2, width: '100%' }}>
+        <Paper elevation={3} sx={{ flexGrow: 1, p: 2, width: '100%', height: '100%' }}>
           <Button
             variant="contained"
             onClick={generateMindmap}
@@ -268,7 +272,7 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery }) {
           )}
 
           {showMindmap && fullMindmapData && (
-            <Box sx={{ width: '100%', height: '500px', border: '1px solid #eee', mt: 2 }}>
+            <Box sx={{ width: '100%', flexGrow: 1, border: '1px solid #eee', mt: 2, height: '100%' }}>
               <ReactFlow
                 nodes={nodes}
                 edges={edges}

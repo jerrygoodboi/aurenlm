@@ -85,70 +85,91 @@ function App() {
           </Typography>
         </Toolbar>
       </AppBar>
-                        <Container maxWidth={false} disableGutters sx={{
-                          display: 'flex',
-                          height: 'calc(100vh - 64px)',
-                          width: '100vw',
-                          margin: 0,
-                          padding: 0,
-                          overflow: 'hidden',
-                        }}>
-                          <Box sx={{
-                            width: leftPanelOpen ? '20%' : '0',
-                            minWidth: leftPanelOpen ? '20%' : '0',
-                            maxWidth: leftPanelOpen ? '20%' : '0',
-                            flexShrink: 0,
-                            overflowY: 'auto',
-                            borderRight: leftPanelOpen ? '1px solid #eee' : 'none',
-                            transition: 'width 0.3s ease-in-out, min-width 0.3s ease-in-out, max-width 0.3s ease-in-out',
-                            boxSizing: 'border-box',
-                          }}>
-                            <DocumentList
-                              files={files}
-                              onMainPointClick={handleMainPointClick}
-                              onFileUpload={handleFileChange}
-                              isOpen={leftPanelOpen}
-                              togglePanel={() => setLeftPanelOpen(!leftPanelOpen)}
-                            />
-                          </Box>
-                          <Box sx={{
-                            flexGrow: 1,
-                            width: '60%',
-                            minWidth: '60%',
-                            maxWidth: '60%',
-                            overflowY: 'auto',
-                            boxSizing: 'border-box',
-                            borderLeft: '1px solid #eee',
-                            borderRight: '1px solid #eee',
-                          }}>
-                            <Chat
-                              key={chatContext ? chatContext.fullText + chatContext.contextPrompt : 'default'}
-                              contextPrompt={chatContext?.contextPrompt}
-                              pdfContent={chatContext?.fullText}
-                              mindmapQuery={chatQueryFromMindmap}
-                              setChatQueryFromMindmap={setChatQueryFromMindmap}
-                              fileUploadSummary={fileUploadSummary} // Pass new prop
-                              setFileUploadSummary={setFileUploadSummary} // Pass setter
-                            />
-                          </Box>
-                          <Box sx={{
-                            width: rightPanelOpen ? '20%' : '0',
-                            minWidth: rightPanelOpen ? '20%' : '0',
-                            maxWidth: rightPanelOpen ? '20%' : '0',
-                            flexShrink: 0,
-                            overflowY: 'auto',
-                            borderLeft: rightPanelOpen ? '1px solid #eee' : 'none',
-                            transition: 'width 0.3s ease-in-out, min-width 0.3s ease-in-out, max-width 0.3s ease-in-out',
-                            boxSizing: 'border-box',
-                          }}>
-                            <Studio 
-                              isOpen={rightPanelOpen} 
-                              togglePanel={() => setRightPanelOpen(!rightPanelOpen)} 
-                              sessionPdfContent={chatContext?.fullText}
-                              onMindmapQuery={setChatQueryFromMindmap}
-                            />
-                          </Box>
-                        </Container>    </>
+      <Container maxWidth={false} disableGutters sx={{
+        display: 'flex',
+        height: 'calc(100vh - 64px)',
+        width: '100vw',
+        margin: 0,
+        padding: 0,
+        overflow: 'hidden',
+        backgroundColor: '#f5f5f5', // Light, airy background
+        gap: '16px', // Equal breathing space between sections
+        boxSizing: 'border-box',
+      }}>
+        <Box sx={{
+          width: leftPanelOpen ? '20%' : '40px',
+          minWidth: leftPanelOpen ? '20%' : '40px',
+          maxWidth: leftPanelOpen ? '20%' : '40px',
+          flexShrink: 0,
+          overflowY: 'auto',
+          overflowX: 'hidden', // Hide horizontal overflow when collapsed
+          backgroundColor: '#ffffff',
+          borderRadius: '8px',
+          boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)',
+          padding: leftPanelOpen ? '16px' : '0', // No padding when collapsed
+          transition: 'width 0.3s ease-in-out, min-width 0.3s ease-in-out, max-width 0.3s ease-in-out, box-shadow 0.3s ease-in-out, padding 0.3s ease-in-out',
+          boxSizing: 'border-box',
+          '&:hover': {
+            boxShadow: '0px 4px 8px rgba(0, 0, 0, 0.15)',
+          },
+        }}>
+          <DocumentList
+            files={files}
+            onMainPointClick={handleMainPointClick}
+            onFileUpload={handleFileChange}
+            isOpen={leftPanelOpen}
+            togglePanel={() => setLeftPanelOpen(!leftPanelOpen)}
+          />
+        </Box>
+        <Box sx={{
+          flexGrow: 1,
+          overflowY: 'auto',
+          boxSizing: 'border-box',
+          minWidth: 0, // Allow flex item to shrink below its content size
+          backgroundColor: '#ffffff',
+          borderRadius: '8px',
+          boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)',
+          padding: '16px',
+          transition: 'box-shadow 0.3s ease-in-out',
+          '&:hover': {
+            boxShadow: '0px 4px 8px rgba(0, 0, 0, 0.15)',
+          },
+        }}>
+          <Chat
+            key={chatContext ? chatContext.fullText + chatContext.contextPrompt : 'default'}
+            contextPrompt={chatContext?.contextPrompt}
+            pdfContent={chatContext?.fullText}
+            mindmapQuery={chatQueryFromMindmap}
+            setChatQueryFromMindmap={setChatQueryFromMindmap}
+            fileUploadSummary={fileUploadSummary} // Pass new prop
+            setFileUploadSummary={setFileUploadSummary} // Pass setter
+          />
+        </Box>
+        <Box sx={{
+          width: rightPanelOpen ? '20%' : '40px',
+          minWidth: rightPanelOpen ? '20%' : '40px',
+          maxWidth: rightPanelOpen ? '20%' : '40px',
+          flexShrink: 0,
+          overflowY: 'auto',
+          overflowX: 'hidden', // Hide horizontal overflow when collapsed
+          backgroundColor: '#ffffff',
+          borderRadius: '8px',
+          boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)',
+          padding: rightPanelOpen ? '16px' : '0', // No padding when collapsed
+          transition: 'width 0.3s ease-in-out, min-width 0.3s ease-in-out, max-width 0.3s ease-in-out, box-shadow 0.3s ease-in-out, padding 0.3s ease-in-out',
+          boxSizing: 'border-box',
+          '&:hover': {
+            boxShadow: '0px 4px 8px rgba(0, 0, 0, 0.15)',
+          },
+        }}>
+          <Studio 
+            isOpen={rightPanelOpen} 
+            togglePanel={() => setRightPanelOpen(!rightPanelOpen)} 
+            sessionPdfContent={chatContext?.fullText}
+            onMindmapQuery={setChatQueryFromMindmap}
+          />
+        </Box>
+      </Container>    </>
   );
 }
 
