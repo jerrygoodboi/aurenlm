@@ -3,6 +3,7 @@ import { AppBar, Toolbar, Typography, Container, Box, IconButton, Button, Circul
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import LogoutIcon from '@mui/icons-material/Logout';
+import HistoryIcon from '@mui/icons-material/History'; // Import HistoryIcon
 import DocumentList from './components/DocumentList';
 import Chat from './components/Chat';
 import Studio from './components/Studio';
@@ -144,6 +145,9 @@ function App() {
           <IconButton sx={{ ml: 1 }} onClick={toggleTheme} color="inherit">
             {mode === 'dark' ? <Brightness7Icon /> : <Brightness4Icon />}
           </IconButton>
+          <Button color="inherit" onClick={() => setCurrentSessionId(null)} startIcon={<HistoryIcon />}>
+            Sessions
+          </Button>
           <Button color="inherit" onClick={logout} startIcon={<LogoutIcon />}>
             Logout
           </Button>
@@ -214,7 +218,7 @@ function App() {
               initialMessages={chatContext?.initialMessages || []}
             />
           ) : (
-            <Typography variant="h5" sx={{ p: 2 }}>Select a session or create a new one.</Typography>
+            null
           )}
         </Box>
         <Box sx={{
@@ -243,7 +247,7 @@ function App() {
               initialMindmapData={sessionData?.mindmap} // Pass initial mindmap data
             />
           ) : (
-            <Typography variant="h5" sx={{ p: 2 }}>Mindmap will appear here after session selection.</Typography>
+            null
           )}
         </Box>
       </Container>
