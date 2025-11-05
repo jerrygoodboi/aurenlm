@@ -28,13 +28,6 @@ AurenLM is an intelligent study assistant designed to help you analyze documents
 *   **Flask-CORS:** Handling Cross-Origin Resource Sharing.
 *   **Werkzeug:** WSGI utility library for Python.
 
-### Other Backend Components (Exploratory/Alternative Implementations)
-
-This project also contains other backend implementations that may be under development or serve as alternatives:
-
-*   **Python (FastAPI):** An alternative Python web framework for building APIs, potentially using MongoDB and ChromaDB for data storage and vector embeddings, and integrating with `emergentintegrations` for LLM orchestration.
-*   **Node.js (Express):** A Node.js web application framework, potentially integrating with `@google/genai` and `pdf-parse`.
-
 ## Setup and Installation
 
 To get AurenLM up and running on your local machine, follow these steps:
@@ -71,12 +64,6 @@ Create a `.env` file in the `python_backend` directory with your Gemini API URL.
 
 ```
 GEMINI_API_URL="https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=YOUR_GEMINI_API_KEY"
-```
-
-Return to the root directory:
-
-```bash
-cd ..
 ```
 
 ## Usage
