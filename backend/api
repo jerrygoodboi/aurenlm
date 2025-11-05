@@ -1,3 +1,0 @@
-// ⚠️ Use your Gemini API key
-const API_KEY = "AIzaSyDs6994LIi8-qPzoA1N62qM4msrSuZleSY";
-const genAI = new GoogleGenerativeAI(API_KEY);
