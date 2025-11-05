@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Typography, TextField, Button, Paper, Box } from '@mui/material';
 import axios from 'axios';
 
@@ -6,7 +6,7 @@ const systemPrompt = "You are AurenLM, a tutor-like chatbot. Your goal is to hel
 
 const MAX_CONVERSATION_LENGTH = 2000; // Max characters before summarizing old conversation
 
-function Chat({ contextPrompt, pdfContent, initialMessage }) {
+function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap, fileUploadSummary, setFileUploadSummary }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [conversation, setConversation] = useState(systemPrompt);
@@ -15,33 +15,8 @@ function Chat({ contextPrompt, pdfContent, initialMessage }) {
   const [sessionPdfContent, setSessionPdfContent] = useState('');
   const [sessionContextPrompt, setSessionContextPrompt] = useState('');
 
-  // This effect sets up the context for a new chat session.
-  useEffect(() => {
-    setConversation(systemPrompt);
-    setInput('');
-    setSessionPdfContent(pdfContent || '');
-    setSessionContextPrompt(contextPrompt || '');
-
-    if (initialMessage) {
-      // If there's an initial message (like a summary), display it from the AI.
-      setMessages([{ text: initialMessage, sender: 'ai' }]);
-      // Add the summary to the conversation history as if the AI said it.
-      setConversation(prev => prev + `AurenLM: ${initialMessage}\n`); // Fixed: AurenLM instead of remmacs
-    } else {
-      // Otherwise, it's a new chat from a clicked point, so clear messages for the user to start.
-      setMessages([]);
-    }
-  }, [contextPrompt, pdfContent, initialMessage]);
-
-  const handleSend = async () => {
-    if (input.trim() === '') return;
-
-    const userMessage = { text: input, sender: 'user' };
-    setMessages(prevMessages => [...prevMessages, userMessage]);
-    setInput('');
-
-    let promptForBackend;
-    const isFirstMessage = messages.length === 0;
+  // Function to send a query to Gemini and update chat
+  const sendQueryToGemini = useCallback(async (queryText, isInitial = false) => {
     let currentConversationState = conversation; // Use a local variable for current state
 
     // Conditionally summarize old conversation if it gets too long
@@ -64,22 +39,23 @@ function Chat({ contextPrompt, pdfContent, initialMessage }) {
     }
 
     // Construct the prompt for the current turn
-    if (isFirstMessage && sessionContextPrompt) {
-      promptForBackend = `Regarding the main point "${sessionContextPrompt}", my question is: ${input}`;
+    let promptForBackend = queryText; // Initialize with queryText as default
+    if (isInitial && sessionContextPrompt) {
+      promptForBackend = `Regarding the main point "${sessionContextPrompt}", my question is: ${queryText}`;
       currentConversationState += `User: ${promptForBackend}\nAurenLM: `;
     } else {
-      currentConversationState += `User: ${input}\nAurenLM: `;
+      currentConversationState += `User: ${promptForBackend}\nAurenLM: `;
     }
     
     setConversation(currentConversationState); // Update conversation state with new user message
 
     try {
       const response = await axios.post(
-        'http://localhost:5000/local_completion',
+        'http://localhost:5000/gemini_completion',
         {
           prompt: currentConversationState, // Use the updated conversation
           pdfContent: sessionPdfContent,
-          isFirstMessage: isFirstMessage
+          isFirstMessage: isInitial
         },
         {
           headers: { 'Content-Type': 'application/json' },
@@ -87,9 +63,10 @@ function Chat({ contextPrompt, pdfContent, initialMessage }) {
       );
 
       if (response.data && response.data.content) {
-        const aiMessage = { text: response.data.content, sender: 'ai' };
+        const messageText = typeof response.data.content === 'string' ? response.data.content : JSON.stringify(response.data.content);
+        const aiMessage = { text: messageText, sender: 'ai' };
         setMessages(prev => [...prev, aiMessage]);
-        setConversation(prev => prev + response.data.content + '\n');
+        setConversation(prev => prev + messageText + '\n');
       } else {
         const errorMessage = { text: 'No response from the server.', sender: 'ai' };
         setMessages(prev => [...prev, errorMessage]);
@@ -99,6 +76,45 @@ function Chat({ contextPrompt, pdfContent, initialMessage }) {
       const errorMessage = { text: 'Error getting response from AI.', sender: 'ai' };
       setMessages(prev => [...prev, errorMessage]);
     }
+  }, [conversation, sessionPdfContent, sessionContextPrompt]);
+
+  // This effect sets up the context for a new chat session.
+  useEffect(() => {
+    setConversation(systemPrompt);
+    setInput('');
+    setSessionPdfContent(pdfContent || '');
+    setSessionContextPrompt(contextPrompt || '');
+    setMessages([]); // Always clear messages on new context, unless fileUploadSummary is present
+  }, [contextPrompt, pdfContent]);
+
+  // Effect to handle mindmap queries
+  useEffect(() => {
+    if (mindmapQuery) {
+      const userMessage = { text: mindmapQuery, sender: 'user' };
+      setMessages(prevMessages => [...prevMessages, userMessage]);
+      sendQueryToGemini(mindmapQuery);
+      setChatQueryFromMindmap(null); // Clear the query after it's been used
+    }
+  }, [mindmapQuery, sendQueryToGemini, setChatQueryFromMindmap]);
+
+  // Effect to handle file upload summaries
+  useEffect(() => {
+    if (fileUploadSummary) {
+      const aiMessage = { text: fileUploadSummary, sender: 'ai' };
+      setMessages(prev => [...prev, aiMessage]);
+      setConversation(prev => prev + `AurenLM: ${fileUploadSummary}\n`);
+      setFileUploadSummary(null); // Clear the summary after it's been used
+    }
+  }, [fileUploadSummary, setFileUploadSummary]);
+
+  const handleSend = async () => {
+    if (input.trim() === '') return;
+
+    const userMessage = { text: input, sender: 'user' };
+    setMessages(prevMessages => [...prevMessages, userMessage]);
+    setInput('');
+
+    sendQueryToGemini(input, messages.length === 0); // Pass input and whether it's the first message
   };
 
   return (

@@ -18,26 +18,28 @@ if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
 def get_gemini_response(prompt):
+    print(f"Sending prompt to Gemini: {prompt[:200]}...") # Log first 200 chars of prompt
     headers = {"Content-Type": "application/json"}
     data = {"contents": [{"parts": [{"text": prompt}]}]}
     response = requests.post(GEMINI_API_URL, headers=headers, json=data)
 
+    print(f"Raw Gemini API response status: {response.status_code}")
+    print(f"Raw Gemini API response body: {response.text[:500]}...") # Log first 500 chars of response
+
     if response.status_code == 200:
         try:
-            # Attempt to parse the response as JSON
-            gemini_response_text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
-            # Gemini sometimes wraps JSON in markdown code blocks, so try to extract it
-            if gemini_response_text.startswith("```json") and gemini_response_text.endswith("```"):
-                json_string = gemini_response_text[7:-3].strip()
-            else:
-                json_string = gemini_response_text.strip()
-            
-            return json.loads(json_string)
-        except (json.JSONDecodeError, KeyError) as e:
-            print(f"Error parsing Gemini response as JSON: {e}")
-            print(f"Raw Gemini response: {gemini_response_text}")
-            # Return a JSON object with an error message
-            return {"error": f"Error parsing Gemini response: {e}", "raw_response": gemini_response_text}
+            json_response = response.json()
+            text_content = json_response["candidates"][0]["content"]["parts"][0]["text"]
+            print(f"Parsed Gemini response text: {text_content[:200]}...")
+            return {"text": text_content}
+        except json.JSONDecodeError:
+            print(f"Gemini response is not JSON. Returning raw text as error.")
+            print(f"Raw Gemini response: {response.text}")
+            return {"error": "Gemini response was not valid JSON", "raw_response": response.text}
+        except (KeyError, IndexError) as e:
+            print(f"Error parsing Gemini response: {e}")
+            print(f"Raw Gemini response: {response.text}")
+            return {"error": f"Error parsing Gemini response: {e}", "raw_response": response.text}
     else:
         print(f"Gemini API Error: Status Code {response.status_code}")
         print(f"Response Body: {response.text}")
@@ -74,59 +76,27 @@ def upload_file():
 
         os.remove(filepath) # clean up
 
-        filtered_text = filter_notes_section(text)
-
-        # summary_text = get_local_llm_summary(filtered_text) # Commented out for now
-
-        return jsonify({"summary": "Summary generation commented out", "fullText": filtered_text})
-
-
-def send_post_request(url, data):
-    headers = {'Content-Type': 'application/json'}
-    try:
-        response = requests.post(url, headers=headers, json=data)
-        response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx) 
-        
         try:
-            return response.json()
-        except json.JSONDecodeError:
-            print("Error: Failed to decode JSON response from the model.")
-            print("Response content:")
-            print(response.text)
-            return None
+            filtered_text = filter_notes_section(text)
+        except Exception as e:
+            print(f"Error filtering notes section: {e}")
+            return jsonify({"message": "Error processing document", "details": str(e)}), 500
 
-    except requests.exceptions.RequestException as e:
-        error_message = f"Error: Request to the model failed: {e}"
-        print(error_message)
-        return error_message
+        summarization_prompt = f"""Provide a detailed summary of the following text. The summary should be a single paragraph, approximately 3 to 5 sentences long, capturing the main ideas and key points.
 
-def comp(full_prompt_text, temperature=0.7, grammar=""):
-    json_request = {
-            "n_predict": 4096,
-            "temperature": temperature,
-            "stop": ["</s>", "AurenLM:", "User:"],
-            "prompt": full_prompt_text,
-            "grammar": grammar
-            }
-    response = send_post_request("http://100.102.173.88:8080/completion", json_request)
+Text:
+{filtered_text}
+"""
+        summary_response = get_gemini_response(summarization_prompt)
 
-    if isinstance(response, str):
-        return response # It's an error message
+        print(f"Summary response from get_gemini_response: {summary_response}")
 
-    print(f"LLM Response: {response}")
-    if response:
-        if "content" in response:
-            # Ensure the content is a string. If it's an object, convert it to a string.
-            chatbot_response = response["content"]
-            if isinstance(chatbot_response, dict) or isinstance(chatbot_response, list):
-                return json.dumps(chatbot_response)
-            return str(chatbot_response)
-        else:
-            print("Chatbot: 'content' key not in response from the server.")
-            return json.dumps(response)
-    else:
-        print("Request failed. Check the server or URL.")
-    return None # Ensure a return value
+        if "error" in summary_response:
+            return jsonify({"message": "Error generating summary", "details": summary_response["error"]}), 500
+
+        summary_text = summary_response["text"]
+
+        return jsonify({"summary": summary_text, "fullText": filtered_text})
 
 def parse_text_to_list(text):
     lines = text.split('\n')
@@ -141,44 +111,8 @@ def parse_text_to_list(text):
             parsed_list.append(line)
     return parsed_list if parsed_list else [text] # Return original text as single item if no list format found
 
-def get_local_llm_summary(text_to_summarize):
-    # Construct a prompt for a one-paragraph summary
-    summarization_prompt = f"""Provide a detailed summary of the following text. The summary should be a single paragraph, approximately 3 to 5 sentences long, capturing the main ideas and key points.
-
-Text:
-{text_to_summarize}
-"""
-    json_request = {
-            "n_predict": 512, # Increased prediction size for a longer summary
-            "temperature": 0.7,
-            "stop": ["</s>", "AurenLM:", "User:"],
-            "repeat_last_n": 256,
-            "repeat_penalty": 1.2,
-            "top_k": 40,
-            "top_p": 0.5,
-            "tfs_z": 1,
-            "typical_p": 1,
-            "presence_penalty": 0,
-            "frequency_penalty": 0,
-            "mirostat": 0,
-            "mirostat_tau": 5,
-            "mirostat_eta": 0.1,
-            "grammar": "",
-            "n_probs": 0,
-            "image_data": [],
-            "cache_prompt": True,
-            "slot_id": 0,
-            "prompt": summarization_prompt
-            }
-    response = send_post_request("http://100.102.173.88:8080/completion", json_request)
-
-    if response and "content" in response:
-        return response["content"].strip()
-    else:
-        return "Sorry, I couldn't get a summary from the local LLM."
-
-@app.route("/local_completion", methods=["POST"])
-def local_completion():
+@app.route("/gemini_completion", methods=["POST"])
+def gemini_completion():
     data = request.json
     prompt = data.get("prompt", "")
     pdf_content = data.get("pdfContent", "")
@@ -191,11 +125,11 @@ def local_completion():
     if pdf_content: # Always prepend if pdf_content exists
         full_prompt_text = f"Document Content:\n{pdf_content}\n\n{prompt}"
     
-    response_content = comp(full_prompt_text)
-    if response_content:
-        return jsonify({"content": response_content})
+    gemini_response = get_gemini_response(full_prompt_text)
+    if "error" in gemini_response:
+        return jsonify({"message": "Error getting completion from Gemini API", "details": gemini_response["error"]}), 500
     else:
-        return jsonify({"message": "Error getting completion from local LLM"}), 500
+        return jsonify({"content": gemini_response["text"]})
 
 @app.route("/summarize_conversation", methods=["POST"])
 def summarize_conversation():
@@ -210,12 +144,12 @@ def summarize_conversation():
 Conversation History:
 {conversation_history}
 """
-    summary = comp(summarization_prompt)
+    summary_response = get_gemini_response(summarization_prompt)
 
-    if summary:
-        return jsonify({"summary": summary})
+    if "error" in summary_response:
+        return jsonify({"message": "Error summarizing conversation", "details": summary_response["error"]}), 500
     else:
-        return jsonify({"message": "Error summarizing conversation"}), 500
+        return jsonify({"summary": summary_response["text"]})
 
 @app.route("/generate-mindmap", methods=["POST"])
 def generate_mindmap():
@@ -225,41 +159,30 @@ def generate_mindmap():
     if not full_text:
         return jsonify({"message": "No text provided for mind map generation"}), 400
 
-    json_grammar = r'''
-root ::= object
-value ::= object | array | string | number | ("true" | "false" | "null")
-object ::= "{" ws (string ":" ws value ("," ws string ":" ws value)*)? "}"
-array ::= "[" ws (value ("," ws value)*)? "]"
-string ::= "\"" ([^"\\\x7F\x00-\x1F] | "\\" ([\"\\/bfnrt] | "u" [0-9a-fA-F]{4}))* "\""
-number ::= ("-"? ([0-9] | [1-9] [0-9]*)) ("." [0-9]+)? ([eE] [-+]? [0-9]+)?
-ws ::= [ \t\n]*
-'''
-
     mindmap_prompt = f"""Generate a hierarchical mindmap from the following document. Your response MUST be a single JSON object, and ONLY the JSON object. The JSON object must have a 'title' key and a 'nodes' array. Each node in the 'nodes' array must have an 'id', a 'label', and a 'children' array. The 'children' array should contain nested nodes following the same structure. Ensure the JSON is perfectly formed and contains no other text or markdown outside of the JSON object.
 
 Document:
 {full_text[:1000]}"""
 
-    mindmap_content = comp(mindmap_prompt, temperature=0.3, grammar=json_grammar)
+    mindmap_response = get_gemini_response(mindmap_prompt)
 
-    if mindmap_content:
-        if isinstance(mindmap_content, str) and mindmap_content.startswith("Error:"):
-            return jsonify({"message": mindmap_content}), 500
+    if "error" in mindmap_response:
+        return jsonify({"message": "Error generating mind map", "details": mindmap_response["error"]}), 500
 
-        print(f"Mindmap content from LLM: {mindmap_content}")
-        try:
-            # The LLM might return a string that is a JSON object.
-            # We need to parse it to make sure it's valid JSON.
-            if mindmap_content.startswith("```json") and mindmap_content.endswith("```"):
-                mindmap_content = mindmap_content[7:-3].strip()
-            mindmap_json = json.loads(mindmap_content)
-            print(f"Mindmap JSON to be returned: {mindmap_json}")
-            return jsonify(mindmap_json)
-        except json.JSONDecodeError as e:
-            print(f"Error decoding mind map JSON: {e}")
-            return jsonify({"message": "Error decoding mind map from LLM response"}), 500
-    else:
-        return jsonify({"message": "Error generating mind map"}), 500
+    mindmap_content = mindmap_response["text"]
+
+    print(f"Mindmap content from LLM: {mindmap_content}")
+    try:
+        # The LLM might return a string that is a JSON object.
+        # We need to parse it to make sure it's valid JSON.
+        if mindmap_content.startswith("```json") and mindmap_content.endswith("```"):
+            mindmap_content = mindmap_content[7:-3].strip()
+        mindmap_json = json.loads(mindmap_content)
+        print(f"Mindmap JSON to be returned: {mindmap_json}")
+        return jsonify(mindmap_json)
+    except json.JSONDecodeError as e:
+        print(f"Error decoding mind map JSON: {e}")
+        return jsonify({"message": "Error decoding mind map from LLM response"}), 500
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)

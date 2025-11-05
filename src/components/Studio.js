@@ -1,77 +1,56 @@
-import React, { useState, useCallback } from 'react';
-import { Paper, Typography, Box, IconButton, Tooltip, Button, Dialog, AppBar, Toolbar } from '@mui/material';
+import React, { useState, useCallback, useEffect } from 'react';
+import { Paper, Typography, Box, IconButton, Tooltip, Button } from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
-import CloseIcon from '@mui/icons-material/Close';
-import ReactFlow, { addEdge, applyEdgeChanges, applyNodeChanges, Controls, Background } from 'reactflow';
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
+import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
+import ReactFlow, { addEdge, applyEdgeChanges, applyNodeChanges, Controls, Background, Handle, Position } from 'reactflow';
 import 'reactflow/dist/style.css';
 import axios from 'axios';
 
-function MindmapDialog({ nodes, edges, onNodesChange, onEdgesChange, onConnect, onClose, onNodeClick }) {
-  const onNodeClickHandler = useCallback((event, node) => {
-    const clickedNodeLabel = node.data.label;
-    let parentNodeLabel = "";
+// Custom Node Component for ReactFlow
+const CustomMindmapNode = ({ data }) => {
+  const { label, hasChildren, isCollapsed, onToggleCollapse, onNodeClick } = data;
 
-    // Find the parent node
-    const parentEdge = edges.find(edge => edge.target === node.id);
-    if (parentEdge) {
-      const parentNode = nodes.find(n => n.id === parentEdge.source);
-      if (parentNode) {
-        parentNodeLabel = parentNode.data.label;
-      }
-    }
-
-    const query = `Discuss what these sources say about ${clickedNodeLabel}${parentNodeLabel ? `, in the larger context of ${parentNodeLabel}` : ""}`;
-    onNodeClick(query);
-  }, [nodes, edges, onNodeClick]);
+  const handleNodeClick = useCallback(() => {
+    onNodeClick(label); // Pass the label of the clicked node
+  }, [onNodeClick, label]);
 
   return (
-    <Dialog
-      fullScreen
-      open={true}
-      onClose={onClose}
-      PaperProps={{
-        sx: { width: '100%', height: '100%', m: 0, maxWidth: 'none', maxHeight: 'none' }
+    <Box
+      sx={{
+        border: '1px solid #ccc',
+        borderRadius: '5px',
+        padding: '10px',
+        backgroundColor: 'white',
+        display: 'flex',
+        alignItems: 'center',
+        cursor: 'pointer',
       }}
+      onClick={handleNodeClick}
     >
-      <AppBar sx={{ position: 'relative' }}>
-        <Toolbar>
-          <IconButton
-            edge="start"
-            color="inherit"
-            onClick={onClose}
-            aria-label="close"
-          >
-            <CloseIcon />
-          </IconButton>
-          <Typography sx={{ ml: 2, flex: 1 }} variant="h6" component="div">
-            Mind Map
-          </Typography>
-        </Toolbar>
-      </AppBar>
-      <Box sx={{ width: '100%', height: 'calc(100vh - 64px)' }}>
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onNodeClick={onNodeClickHandler}
-          fitView
-        >
-          <Controls />
-          <Background variant="dots" gap={12} size={1} />
-        </ReactFlow>
-      </Box>
-    </Dialog>
+      <Handle type="target" position={Position.Left} />
+      <Typography variant="body2" sx={{ mr: 1 }}>{label}</Typography>
+      {hasChildren && (
+        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onToggleCollapse(); }}>
+          {isCollapsed ? <AddCircleOutlineIcon fontSize="small" /> : <RemoveCircleOutlineIcon fontSize="small" />}
+        </IconButton>
+      )}
+      <Handle type="source" position={Position.Right} />
+    </Box>
   );
-}
+};
+
+const nodeTypes = {
+  customMindmapNode: CustomMindmapNode,
+};
 
 function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery }) {
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [showMindmapModal, setShowMindmapModal] = useState(false);
+  const [showMindmap, setShowMindmap] = useState(false); // Controls visibility of the mindmap section
+  const [fullMindmapData, setFullMindmapData] = useState(null); // Stores the full hierarchical data
 
   const onNodesChange = useCallback(
     (changes) => setNodes((nds) => applyNodeChanges(changes, nds)),
@@ -86,6 +65,126 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery }) {
     [setEdges]
   );
 
+  const onNodeClickHandler = useCallback((clickedNodeLabel) => {
+    // This function is now called from CustomMindmapNode with the label directly
+    // We need to find the full node data to get parent context if needed
+    const clickedNode = findNodeInFullData(fullMindmapData, clickedNodeLabel);
+    let parentNodeLabel = "";
+
+    if (clickedNode && clickedNode.parentId) {
+      const parentNode = findNodeInFullData(fullMindmapData, clickedNode.parentId);
+      if (parentNode) {
+        parentNodeLabel = parentNode.label;
+      }
+    }
+
+    const query = `Discuss what these sources say about ${clickedNodeLabel}${parentNodeLabel ? `, in the larger context of ${parentNodeLabel}` : ""}`;
+    onMindmapQuery(query);
+  }, [fullMindmapData, onMindmapQuery]);
+
+  // Helper to find a node in the fullMindmapData by its label or ID
+  const findNodeInFullData = (data, identifier, searchById = false) => {
+    if (!data) return null;
+    let foundNode = null;
+    const search = (nodesArray) => {
+      for (const node of nodesArray) {
+        if ((searchById && node.id === identifier) || (!searchById && node.label === identifier)) {
+          foundNode = node;
+          return;
+        }
+        if (node.children) {
+          search(node.children);
+        }
+      }
+    };
+    search(data.nodes);
+    return foundNode;
+  };
+
+  const toggleNodeCollapse = useCallback((nodeId) => {
+    setFullMindmapData(prevData => {
+      if (!prevData) return prevData;
+
+      const newNodes = JSON.parse(JSON.stringify(prevData.nodes)); // Deep copy
+      const toggle = (nodesArray) => {
+        for (const node of nodesArray) {
+          if (node.id === nodeId) {
+            node.isCollapsed = !node.isCollapsed;
+            return true;
+          }
+          if (node.children && toggle(node.children)) {
+            return true;
+          }
+        }
+        return false;
+      };
+
+      toggle(newNodes);
+      return { ...prevData, nodes: newNodes };
+    });
+  }, []);
+
+  const buildReactFlowElements = useCallback((data) => {
+    const rfNodes = [];
+    const rfEdges = [];
+    const nodePositions = {}; // To store calculated positions
+
+    let currentY = 0;
+
+    const traverseAndBuild = (node, parentId = null, level = 0) => {
+      if (!node) return;
+
+      const isVisible = !node.isCollapsed || level === 0; // Only show top-level or expanded nodes
+
+      if (isVisible) {
+        const xPosition = level * 250; // X position based on level
+        const yPosition = currentY; // Use currentY for Y position
+
+        rfNodes.push({
+          id: node.id,
+          type: 'customMindmapNode',
+          data: {
+            label: node.label,
+            hasChildren: node.children && node.children.length > 0,
+            isCollapsed: node.isCollapsed,
+            onToggleCollapse: () => toggleNodeCollapse(node.id),
+            onNodeClick: onNodeClickHandler,
+          },
+          position: { x: xPosition, y: yPosition },
+        });
+        nodePositions[node.id] = { x: xPosition, y: yPosition };
+
+        if (parentId) {
+          rfEdges.push({
+            id: `${parentId}-${node.id}`,
+            source: parentId,
+            target: node.id,
+            animated: true,
+          });
+        }
+        currentY += 70; // Increment Y for the next node
+      }
+
+      if (node.children && !node.isCollapsed) {
+        node.children.forEach(child => traverseAndBuild(child, node.id, level + 1));
+      }
+    };
+
+    if (data && data.nodes) {
+      data.nodes.forEach(node => traverseAndBuild(node));
+    }
+    return { rfNodes, rfEdges };
+  }, [onNodeClickHandler, toggleNodeCollapse]);
+
+  useEffect(() => {
+    if (fullMindmapData) {
+      const { rfNodes, rfEdges } = buildReactFlowElements(fullMindmapData);
+      setNodes(rfNodes);
+      setEdges(rfEdges);
+    }
+  }, [fullMindmapData, buildReactFlowElements]);
+
+
   const generateMindmap = async () => {
     setLoading(true);
     try {
@@ -96,37 +195,19 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery }) {
       const mindmapData = response.data;
       console.log("Mindmap data from backend:", mindmapData);
 
-      const initialNodes = [];
-      const initialEdges = [];
-      let y = 0;
-
-      function traverse(node, parentId = null, level = 0) {
-        if (!node) return;
-
-        const nodeId = node.id;
-        initialNodes.push({
-          id: nodeId,
-          data: { label: node.label },
-          position: { x: level * 250, y: y },
-          type: node.type === 'main' ? 'input' : 'default',
+      // Initialize isCollapsed state and parentId for all nodes
+      const initializeCollapseState = (nodesArray, level = 0, parentId = null) => {
+        nodesArray.forEach(node => {
+          node.isCollapsed = level > 0; // Collapse all but top-level nodes initially
+          node.parentId = parentId; // Set parentId
+          if (node.children) {
+            initializeCollapseState(node.children, level + 1, node.id);
+          }
         });
-
-        if (parentId) {
-          initialEdges.push({ id: `${parentId}-${nodeId}`, source: parentId, target: nodeId, animated: true });
-        }
-
-        y += 100;
-
-        if (node.children && node.children.length > 0) {
-          node.children.forEach(child => traverse(child, nodeId, level + 1));
-        }
-      }
-
-      mindmapData.nodes.forEach(node => traverse(node));
-
-      setNodes(initialNodes);
-      setEdges(initialEdges);
-      setShowMindmapModal(true); // Open the modal after successful generation
+      };
+      initializeCollapseState(mindmapData.nodes);
+      setFullMindmapData(mindmapData); // Store the full data with collapse state
+      setShowMindmap(true); // Show the mindmap section
 
     } catch (error) {
       console.error("Error generating mind map:", error);
@@ -135,9 +216,8 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery }) {
     }
   };
 
-
   return (
-    <Box 
+    <Box
       sx={{
         height: 'calc(100vh - 140px)',
         overflowY: 'auto',
@@ -150,7 +230,7 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery }) {
         alignItems: isOpen ? 'flex-start' : 'center',
       }}
     >
-      <Box sx={{ 
+      <Box sx={{
         display: 'flex',
         justifyContent: isOpen ? 'space-between' : 'center',
         alignItems: 'center',
@@ -167,23 +247,41 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery }) {
       </Box>
       {isOpen && (
         <Paper elevation={3} sx={{ flexGrow: 1, p: 2, width: '100%' }}>
-          <Button 
-            variant="contained" 
-            onClick={generateMindmap} 
+          <Button
+            variant="contained"
+            onClick={generateMindmap}
             disabled={loading || !sessionPdfContent}
+            sx={{ mb: 2 }}
           >
             {loading ? 'Generating...' : 'Generate Mind Map'}
           </Button>
-          {showMindmapModal && (
-            <MindmapDialog
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onConnect={onConnect}
-              onClose={() => setShowMindmapModal(false)}
-              onNodeClick={onMindmapQuery}
-            />
+
+          {fullMindmapData && (
+            <Box sx={{ mb: 2 }}>
+              <Button
+                variant="outlined"
+                onClick={() => setShowMindmap(!showMindmap)}
+              >
+                {showMindmap ? 'Hide Mind Map' : 'Show Mind Map'}
+              </Button>
+            </Box>
+          )}
+
+          {showMindmap && fullMindmapData && (
+            <Box sx={{ width: '100%', height: '500px', border: '1px solid #eee', mt: 2 }}>
+              <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onConnect={onConnect}
+                nodeTypes={nodeTypes}
+                fitView
+              >
+                <Controls />
+                <Background variant="dots" gap={12} size={1} />
+              </ReactFlow>
+            </Box>
           )}
         </Paper>
       )}

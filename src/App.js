@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AppBar, Toolbar, Typography, Container, Grid } from '@mui/material';
+import { AppBar, Toolbar, Typography, Container, Box } from '@mui/material';
 import DocumentList from './components/DocumentList';
 import Chat from './components/Chat';
 import Studio from './components/Studio';
@@ -11,6 +11,7 @@ function App() {
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [chatQueryFromMindmap, setChatQueryFromMindmap] = useState(null);
+  const [fileUploadSummary, setFileUploadSummary] = useState(null); // New state for file upload summary
 
   useEffect(() => {
     if (chatQueryFromMindmap) {
@@ -23,7 +24,7 @@ function App() {
   }, [chatQueryFromMindmap]);
 
   const handleMainPointClick = (fullText, mainPoint) => {
-    setChatContext({ fullText: fullText, contextPrompt: mainPoint, initialMessage: null });
+    setChatContext({ fullText: fullText, contextPrompt: mainPoint }); // No initialMessage here
   };
 
   const uploadAndSummarize = async (fileToUpload) => {
@@ -49,7 +50,7 @@ function App() {
       setFiles(prevFiles => [...prevFiles, { file: file, summary: "Summarizing...", fullText: "" }]);
 
       const result = await uploadAndSummarize(file);
-      if (result) {
+      if (result && typeof result.summary === 'string') {
         setFiles(prevFiles =>
           prevFiles.map(item =>
             item.file === file ? { 
@@ -62,8 +63,9 @@ function App() {
         setChatContext({
           fullText: result.fullText,
           contextPrompt: null,
-          initialMessage: result.summary
         });
+        setFileUploadSummary(result.summary); // Set the summary here
+        console.log("Setting fileUploadSummary:", result.summary);
       } else {
         setFiles(prevFiles =>
           prevFiles.map(item =>
@@ -74,12 +76,8 @@ function App() {
     }
   };
 
-  const leftGridWidth = leftPanelOpen ? 2 : 1; // 1 for minimized width
-  const rightGridWidth = rightPanelOpen ? 2 : 1; // 1 for minimized width
-  const centerGridWidth = 12 - leftGridWidth - rightGridWidth;
-
   return (
-    <div>
+    <>
       <AppBar position="static">
         <Toolbar>
           <Typography variant="h6">
@@ -87,36 +85,37 @@ function App() {
           </Typography>
         </Toolbar>
       </AppBar>
-      <Container disableGutters style={{ marginTop: '2rem' }}>
-        <Grid container spacing={0}>
-          <Grid item xs={leftGridWidth}>
-            <DocumentList
-              files={files}
-              onMainPointClick={handleMainPointClick}
-              onFileUpload={handleFileChange}
-              isOpen={leftPanelOpen}
-              togglePanel={() => setLeftPanelOpen(!leftPanelOpen)}
-            />
-          </Grid>
-          <Grid item xs={centerGridWidth}>
-            <Chat
-              key={chatContext ? chatContext.fullText + chatContext.contextPrompt + chatContext.initialMessage : 'default'}
-              contextPrompt={chatContext?.contextPrompt}
-              pdfContent={chatContext?.fullText}
-              initialMessage={chatContext?.initialMessage}
-            />
-          </Grid>
-          <Grid item xs={rightGridWidth}>
-            <Studio 
-              isOpen={rightPanelOpen} 
-              togglePanel={() => setRightPanelOpen(!rightPanelOpen)} 
-              sessionPdfContent={chatContext?.fullText}
-              onMindmapQuery={setChatQueryFromMindmap}
-            />
-          </Grid>
-        </Grid>
+      <Container disableGutters className="app-container">
+        <Box className={`left-panel ${!leftPanelOpen && 'closed'}`}>
+          <DocumentList
+            files={files}
+            onMainPointClick={handleMainPointClick}
+            onFileUpload={handleFileChange}
+            isOpen={leftPanelOpen}
+            togglePanel={() => setLeftPanelOpen(!leftPanelOpen)}
+          />
+        </Box>
+        <Box className="center-panel">
+          <Chat
+            key={chatContext ? chatContext.fullText + chatContext.contextPrompt : 'default'}
+            contextPrompt={chatContext?.contextPrompt}
+            pdfContent={chatContext?.fullText}
+            mindmapQuery={chatQueryFromMindmap}
+            setChatQueryFromMindmap={setChatQueryFromMindmap}
+            fileUploadSummary={fileUploadSummary} // Pass new prop
+            setFileUploadSummary={setFileUploadSummary} // Pass setter
+          />
+        </Box>
+        <Box className={`right-panel ${!rightPanelOpen && 'closed'}`}>
+          <Studio 
+            isOpen={rightPanelOpen} 
+            togglePanel={() => setRightPanelOpen(!rightPanelOpen)} 
+            sessionPdfContent={chatContext?.fullText}
+            onMindmapQuery={setChatQueryFromMindmap}
+          />
+        </Box>
       </Container>
-    </div>
+    </>
   );
 }
 
