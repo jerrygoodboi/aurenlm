@@ -1,70 +1,112 @@
-# Getting Started with Create React App
+# AurenLM - Your AI-Powered Study Assistant
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+AurenLM is an intelligent study assistant designed to help you analyze documents, generate summaries, create mind maps, take notes, and interact with your content through conversational AI. It aims to streamline your learning process by leveraging advanced AI capabilities.
 
-## Available Scripts
+## Features
 
-In the project directory, you can run:
+*   **Document Upload & Analysis:** Upload PDF documents for AI-powered processing.
+*   **Smart Summarization:** Get concise summaries of your uploaded documents.
+*   **Conversational AI:** Ask questions about your documents and get intelligent answers.
+*   **Mind Map Generation:** Automatically generate hierarchical mind maps from your document content to visualize key concepts.
+*   **Note Generation:** Create structured study notes on specific topics from your documents.
+*   **Quiz Generation:** Generate multiple-choice quizzes based on your documents to test your understanding.
 
-### `npm start`
+## Technologies
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+### Frontend
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+*   **React:** A JavaScript library for building user interfaces.
+*   **Material UI:** A comprehensive suite of UI tools for a modern and responsive design.
+*   **Axios:** Promise-based HTTP client for the browser and Node.js.
+*   **React Router DOM:** For declarative routing in React applications.
 
-### `npm test`
+### Backend (Primary - Flask)
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+*   **Python (Flask):** A lightweight Python web framework.
+*   **Google Gemini API:** Utilized for various AI tasks including summarization, conversational AI, mind map, and note generation.
+*   **pdfplumber:** For extracting text from PDF documents.
+*   **Flask-CORS:** Handling Cross-Origin Resource Sharing.
+*   **Werkzeug:** WSGI utility library for Python.
 
-### `npm run build`
+### Other Backend Components (Exploratory/Alternative Implementations)
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+This project also contains other backend implementations that may be under development or serve as alternatives:
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+*   **Python (FastAPI):** An alternative Python web framework for building APIs, potentially using MongoDB and ChromaDB for data storage and vector embeddings, and integrating with `emergentintegrations` for LLM orchestration.
+*   **Node.js (Express):** A Node.js web application framework, potentially integrating with `@google/genai` and `pdf-parse`.
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+## Setup and Installation
 
-### `npm run eject`
+To get AurenLM up and running on your local machine, follow these steps:
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+### 1. Clone the repository
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+```bash
+git clone https://github.com/your-username/AurenLM.git # (Replace with actual repo URL)
+cd AurenLM
+```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+### 2. Frontend Setup
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+Navigate to the root directory where `package.json` resides and install the Node.js dependencies:
 
-## Learn More
+```bash
+npm install
+# or
+yarn install
+```
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+### 3. Backend Setup (Python/Flask)
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+Navigate to the `python_backend` directory and install the required Python packages:
 
-### Code Splitting
+```bash
+cd python_backend
+pip install -r requirements.txt
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+**Environment Variables:**
 
-### Analyzing the Bundle Size
+Create a `.env` file in the `python_backend` directory with your Gemini API URL. Replace `YOUR_GEMINI_API_KEY` with your actual API key.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+```
+GEMINI_API_URL="https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=YOUR_GEMINI_API_KEY"
+```
 
-### Making a Progressive Web App
+Return to the root directory:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+```bash
+cd ..
+```
 
-### Advanced Configuration
+## Usage
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+### 1. Start the Backend (Python/Flask)
 
-### Deployment
+From the `python_backend` directory, run:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+```bash
+python app.py
+```
 
-### `npm run build` fails to minify
+The Flask backend will typically run on `http://localhost:5000`.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+### 2. Start the Frontend
+
+From the root directory, run:
+
+```bash
+npm start
+# or
+yarn start
+```
+
+The React development server will start, usually opening in your browser at `http://localhost:3000`.
+
+## Contributing
+
+Contributions are welcome! Please feel free to open issues or submit pull requests.
+
+## License
+
+This project is licensed under the MIT License - see the `LICENSE` file for details.
