@@ -1,9 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { AppBar, Toolbar, Typography, Container, Box } from '@mui/material';
+import React, { useState, useEffect, useContext } from 'react';
+import { AppBar, Toolbar, Typography, Container, Box, IconButton } from '@mui/material';
+import Brightness4Icon from '@mui/icons-material/Brightness4';
+import Brightness7Icon from '@mui/icons-material/Brightness7';
 import DocumentList from './components/DocumentList';
 import Chat from './components/Chat';
 import Studio from './components/Studio';
 import axios from 'axios';
+import { ThemeContext } from './ThemeContext';
 
 function App() {
   const [chatContext, setChatContext] = useState(null);
@@ -12,6 +15,7 @@ function App() {
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [chatQueryFromMindmap, setChatQueryFromMindmap] = useState(null);
   const [fileUploadSummary, setFileUploadSummary] = useState(null); // New state for file upload summary
+  const { mode, toggleTheme } = useContext(ThemeContext);
 
   useEffect(() => {
     if (chatQueryFromMindmap) {
@@ -80,9 +84,12 @@ function App() {
     <>
       <AppBar position="static">
         <Toolbar>
-          <Typography variant="h6">
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
             AurenLM
           </Typography>
+          <IconButton sx={{ ml: 1 }} onClick={toggleTheme} color="inherit">
+            {mode === 'dark' ? <Brightness7Icon /> : <Brightness4Icon />}
+          </IconButton>
         </Toolbar>
       </AppBar>
       <Container maxWidth={false} disableGutters sx={{
