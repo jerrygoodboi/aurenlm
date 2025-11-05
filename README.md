@@ -35,8 +35,8 @@ To get AurenLM up and running on your local machine, follow these steps:
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/your-username/AurenLM.git # (Replace with actual repo URL)
-cd AurenLM
+git clone https://github.com/jerrygoodboi/aurenlm.git # (Replace with actual repo URL)
+cd aurenlm
 ```
 
 ### 2. Frontend Setup
