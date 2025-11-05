@@ -85,37 +85,70 @@ function App() {
           </Typography>
         </Toolbar>
       </AppBar>
-      <Container disableGutters className="app-container">
-        <Box className={`left-panel ${!leftPanelOpen && 'closed'}`}>
-          <DocumentList
-            files={files}
-            onMainPointClick={handleMainPointClick}
-            onFileUpload={handleFileChange}
-            isOpen={leftPanelOpen}
-            togglePanel={() => setLeftPanelOpen(!leftPanelOpen)}
-          />
-        </Box>
-        <Box className="center-panel">
-          <Chat
-            key={chatContext ? chatContext.fullText + chatContext.contextPrompt : 'default'}
-            contextPrompt={chatContext?.contextPrompt}
-            pdfContent={chatContext?.fullText}
-            mindmapQuery={chatQueryFromMindmap}
-            setChatQueryFromMindmap={setChatQueryFromMindmap}
-            fileUploadSummary={fileUploadSummary} // Pass new prop
-            setFileUploadSummary={setFileUploadSummary} // Pass setter
-          />
-        </Box>
-        <Box className={`right-panel ${!rightPanelOpen && 'closed'}`}>
-          <Studio 
-            isOpen={rightPanelOpen} 
-            togglePanel={() => setRightPanelOpen(!rightPanelOpen)} 
-            sessionPdfContent={chatContext?.fullText}
-            onMindmapQuery={setChatQueryFromMindmap}
-          />
-        </Box>
-      </Container>
-    </>
+                        <Container maxWidth={false} disableGutters sx={{
+                          display: 'flex',
+                          height: 'calc(100vh - 64px)',
+                          width: '100vw',
+                          margin: 0,
+                          padding: 0,
+                          overflow: 'hidden',
+                        }}>
+                          <Box sx={{
+                            width: leftPanelOpen ? '20%' : '0',
+                            minWidth: leftPanelOpen ? '20%' : '0',
+                            maxWidth: leftPanelOpen ? '20%' : '0',
+                            flexShrink: 0,
+                            overflowY: 'auto',
+                            borderRight: leftPanelOpen ? '1px solid #eee' : 'none',
+                            transition: 'width 0.3s ease-in-out, min-width 0.3s ease-in-out, max-width 0.3s ease-in-out',
+                            boxSizing: 'border-box',
+                          }}>
+                            <DocumentList
+                              files={files}
+                              onMainPointClick={handleMainPointClick}
+                              onFileUpload={handleFileChange}
+                              isOpen={leftPanelOpen}
+                              togglePanel={() => setLeftPanelOpen(!leftPanelOpen)}
+                            />
+                          </Box>
+                          <Box sx={{
+                            flexGrow: 1,
+                            width: '60%',
+                            minWidth: '60%',
+                            maxWidth: '60%',
+                            overflowY: 'auto',
+                            boxSizing: 'border-box',
+                            borderLeft: '1px solid #eee',
+                            borderRight: '1px solid #eee',
+                          }}>
+                            <Chat
+                              key={chatContext ? chatContext.fullText + chatContext.contextPrompt : 'default'}
+                              contextPrompt={chatContext?.contextPrompt}
+                              pdfContent={chatContext?.fullText}
+                              mindmapQuery={chatQueryFromMindmap}
+                              setChatQueryFromMindmap={setChatQueryFromMindmap}
+                              fileUploadSummary={fileUploadSummary} // Pass new prop
+                              setFileUploadSummary={setFileUploadSummary} // Pass setter
+                            />
+                          </Box>
+                          <Box sx={{
+                            width: rightPanelOpen ? '20%' : '0',
+                            minWidth: rightPanelOpen ? '20%' : '0',
+                            maxWidth: rightPanelOpen ? '20%' : '0',
+                            flexShrink: 0,
+                            overflowY: 'auto',
+                            borderLeft: rightPanelOpen ? '1px solid #eee' : 'none',
+                            transition: 'width 0.3s ease-in-out, min-width 0.3s ease-in-out, max-width 0.3s ease-in-out',
+                            boxSizing: 'border-box',
+                          }}>
+                            <Studio 
+                              isOpen={rightPanelOpen} 
+                              togglePanel={() => setRightPanelOpen(!rightPanelOpen)} 
+                              sessionPdfContent={chatContext?.fullText}
+                              onMindmapQuery={setChatQueryFromMindmap}
+                            />
+                          </Box>
+                        </Container>    </>
   );
 }
 
