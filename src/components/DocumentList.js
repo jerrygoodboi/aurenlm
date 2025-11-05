@@ -3,11 +3,18 @@ import { Button, List, ListItem, ListItemText, Typography, Box, IconButton, Tool
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 
-function DocumentList({ files, onMainPointClick, onFileUpload, isOpen, togglePanel }) {
-
+function DocumentList({ files, onMainPointClick, onFileUpload, isOpen, togglePanel, currentSessionId }) {
   const handleDocumentClick = (fileItem) => {
     onMainPointClick(fileItem.fullText, null);
   }
+
+  const handleFileUploadChange = (event) => {
+    if (currentSessionId) {
+      onFileUpload(event, currentSessionId);
+    } else {
+      alert("Please select or create a session first.");
+    }
+  };
 
   return (
     <Box 
@@ -44,7 +51,7 @@ function DocumentList({ files, onMainPointClick, onFileUpload, isOpen, togglePan
             <input
               type="file"
               multiple
-              onChange={onFileUpload}
+              onChange={handleFileUploadChange}
               style={{ display: 'none' }}
               id="upload-button"
             />
@@ -57,7 +64,7 @@ function DocumentList({ files, onMainPointClick, onFileUpload, isOpen, togglePan
           <List>
             {files.map((item, index) => (
               <ListItem 
-                key={index} 
+                key={item.id || index} // Use item.id if available, otherwise index
                 button 
                 onClick={() => handleDocumentClick(item)}
                 disabled={item.summary === "Summarizing..."}

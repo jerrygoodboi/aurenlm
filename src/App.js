@@ -1,12 +1,16 @@
-import React, { useState, useEffect, useContext } from 'react';
-import { AppBar, Toolbar, Typography, Container, Box, IconButton } from '@mui/material';
+import React, { useState, useEffect, useContext, useCallback } from 'react';
+import { AppBar, Toolbar, Typography, Container, Box, IconButton, Button, CircularProgress } from '@mui/material';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
+import LogoutIcon from '@mui/icons-material/Logout';
 import DocumentList from './components/DocumentList';
 import Chat from './components/Chat';
 import Studio from './components/Studio';
+import ChatSessionList from './components/ChatSessionList';
 import axios from 'axios';
 import { ThemeContext } from './ThemeContext';
+import { AuthContext } from './AuthContext';
+import LoginPage from './components/LoginPage';
 
 function App() {
   const [chatContext, setChatContext] = useState(null);
@@ -14,8 +18,43 @@ function App() {
   const [leftPanelOpen, setLeftPanelOpen] = useState(true);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [chatQueryFromMindmap, setChatQueryFromMindmap] = useState(null);
-  const [fileUploadSummary, setFileUploadSummary] = useState(null); // New state for file upload summary
+  const [fileUploadSummary, setFileUploadSummary] = useState(null);
+  const [currentSessionId, setCurrentSessionId] = useState(null);
+  const [sessionData, setSessionData] = useState(null); // To store loaded session data
+
   const { mode, toggleTheme } = useContext(ThemeContext);
+  const { isAuthenticated, loading, logout } = useContext(AuthContext);
+
+  // Effect to load session data when currentSessionId changes
+  useEffect(() => {
+    if (currentSessionId && isAuthenticated) {
+      const loadSessionData = async () => {
+        try {
+          const response = await axios.get(`http://localhost:5000/sessions/${currentSessionId}`, { withCredentials: true });
+          setSessionData(response.data);
+          // Populate chat messages
+          setChatContext({
+            fullText: response.data.files.map(f => f.fullText).join('\n\n'), // Combine all file texts
+            contextPrompt: null, // Reset context prompt
+            initialMessages: response.data.messages.map(msg => ({ sender: msg.sender, text: msg.content }))
+          });
+          // Populate document list
+          setFiles(response.data.files.map(f => ({ file: { name: f.filename }, summary: f.summary, fullText: f.fullText, id: f.id })));
+        } catch (error) {
+          console.error("Error loading session data:", error);
+          setSessionData(null);
+          setChatContext(null);
+          setFiles([]);
+        }
+      };
+      loadSessionData();
+    } else if (!currentSessionId) {
+      // Reset state if no session is selected
+      setSessionData(null);
+      setChatContext(null);
+      setFiles([]);
+    }
+  }, [currentSessionId, isAuthenticated]);
 
   useEffect(() => {
     if (chatQueryFromMindmap) {
@@ -34,12 +73,14 @@ function App() {
   const uploadAndSummarize = async (fileToUpload) => {
     const formData = new FormData();
     formData.append('file', fileToUpload);
+    formData.append('session_id', currentSessionId); // Pass current session ID
 
     try {
       const response = await axios.post('http://localhost:5000/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
+        withCredentials: true, // Important for sending cookies
       });
       return response.data;
     } catch (error) {
@@ -64,10 +105,11 @@ function App() {
             } : item
           )
         );
-        setChatContext({
-          fullText: result.fullText,
+        setChatContext(prev => ({
+          ...prev,
+          fullText: (prev?.fullText || '') + '\n\n' + result.fullText,
           contextPrompt: null,
-        });
+        }));
         setFileUploadSummary(result.summary); // Set the summary here
         console.log("Setting fileUploadSummary:", result.summary);
       } else {
@@ -80,6 +122,18 @@ function App() {
     }
   };
 
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
+
   return (
     <>
       <AppBar position="static">
@@ -90,6 +144,9 @@ function App() {
           <IconButton sx={{ ml: 1 }} onClick={toggleTheme} color="inherit">
             {mode === 'dark' ? <Brightness7Icon /> : <Brightness4Icon />}
           </IconButton>
+          <Button color="inherit" onClick={logout} startIcon={<LogoutIcon />}>
+            Logout
+          </Button>
         </Toolbar>
       </AppBar>
       <Container maxWidth={false} disableGutters sx={{
@@ -118,13 +175,18 @@ function App() {
             boxShadow: '0px 4px 8px rgba(0, 0, 0, 0.15)',
           },
         }}>
-          <DocumentList
-            files={files}
-            onMainPointClick={handleMainPointClick}
-            onFileUpload={handleFileChange}
-            isOpen={leftPanelOpen}
-            togglePanel={() => setLeftPanelOpen(!leftPanelOpen)}
-          />
+          {currentSessionId ? (
+            <DocumentList
+              files={files}
+              onMainPointClick={handleMainPointClick}
+              onFileUpload={handleFileChange}
+              isOpen={leftPanelOpen}
+              togglePanel={() => setLeftPanelOpen(!leftPanelOpen)}
+              currentSessionId={currentSessionId}
+            />
+          ) : (
+            <ChatSessionList onSelectSession={setCurrentSessionId} currentSessionId={currentSessionId} />
+          )}
         </Box>
         <Box sx={{
           flexGrow: 1,
@@ -139,15 +201,21 @@ function App() {
             boxShadow: '0px 4px 8px rgba(0, 0, 0, 0.15)',
           },
         }}>
-          <Chat
-            key={chatContext ? chatContext.fullText + chatContext.contextPrompt : 'default'}
-            contextPrompt={chatContext?.contextPrompt}
-            pdfContent={chatContext?.fullText}
-            mindmapQuery={chatQueryFromMindmap}
-            setChatQueryFromMindmap={setChatQueryFromMindmap}
-            fileUploadSummary={fileUploadSummary} // Pass new prop
-            setFileUploadSummary={setFileUploadSummary} // Pass setter
-          />
+          {currentSessionId ? (
+            <Chat
+              key={currentSessionId} // Key to force re-render when session changes
+              contextPrompt={chatContext?.contextPrompt}
+              pdfContent={chatContext?.fullText}
+              mindmapQuery={chatQueryFromMindmap}
+              setChatQueryFromMindmap={setChatQueryFromMindmap}
+              fileUploadSummary={fileUploadSummary}
+              setFileUploadSummary={setFileUploadSummary}
+              currentSessionId={currentSessionId}
+              initialMessages={chatContext?.initialMessages || []}
+            />
+          ) : (
+            <Typography variant="h5" sx={{ p: 2 }}>Select a session or create a new one.</Typography>
+          )}
         </Box>
         <Box sx={{
           width: rightPanelOpen ? '20%' : '40px',
@@ -165,14 +233,21 @@ function App() {
             boxShadow: '0px 4px 8px rgba(0, 0, 0, 0.15)',
           },
         }}>
-          <Studio 
-            isOpen={rightPanelOpen} 
-            togglePanel={() => setRightPanelOpen(!rightPanelOpen)} 
-            sessionPdfContent={chatContext?.fullText}
-            onMindmapQuery={setChatQueryFromMindmap}
-          />
+          {currentSessionId ? (
+            <Studio 
+              isOpen={rightPanelOpen} 
+              togglePanel={() => setRightPanelOpen(!rightPanelOpen)} 
+              sessionPdfContent={chatContext?.fullText}
+              onMindmapQuery={setChatQueryFromMindmap}
+              currentSessionId={currentSessionId}
+              initialMindmapData={sessionData?.mindmap} // Pass initial mindmap data
+            />
+          ) : (
+            <Typography variant="h5" sx={{ p: 2 }}>Mindmap will appear here after session selection.</Typography>
+          )}
         </Box>
-      </Container>    </>
+      </Container>
+    </>
   );
 }
 

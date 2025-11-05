@@ -1,21 +1,203 @@
 import os
 import requests
 import pdfplumber
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, url_for, redirect, flash
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
-from config import GEMINI_API_URL
+from config import GEMINI_API_URL, SECRET_KEY
 import json
 import re
+from flask_sqlalchemy import SQLAlchemy
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, supports_credentials=True) # Enable CORS for credentials
+
+app.config['SECRET_KEY'] = SECRET_KEY
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db' # Using SQLite for simplicity
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+db = SQLAlchemy(app)
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login' # Specify the login view function
 
 UPLOAD_FOLDER = 'uploads'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
+
+# User model
+class User(db.Model, UserMixin):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(20), unique=True, nullable=False)
+    password_hash = db.Column(db.String(128), nullable=False)
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+    def __repr__(self):
+        return f"User('{self.username}')"
+
+# Chat Session model
+class ChatSession(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    title = db.Column(db.String(100), nullable=False)
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+
+    user = db.relationship('User', backref=db.backref('chat_sessions', lazy=True))
+    messages = db.relationship('ChatMessage', backref='session', lazy=True, cascade="all, delete-orphan")
+    files = db.relationship('UploadedFile', backref='session', lazy=True, cascade="all, delete-orphan")
+    mindmap = db.relationship('Mindmap', backref='session', lazy=True, uselist=False, cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"ChatSession('{self.title}', User ID: {self.user_id})"
+
+# Chat Message model
+class ChatMessage(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('chat_session.id'), nullable=False)
+    sender = db.Column(db.String(10), nullable=False) # 'user' or 'gemini'
+    content = db.Column(db.Text, nullable=False)
+    timestamp = db.Column(db.DateTime, default=db.func.current_timestamp())
+
+    def __repr__(self):
+        return f"ChatMessage(Session ID: {self.session_id}, Sender: {self.sender})"
+
+# Uploaded File model
+class UploadedFile(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('chat_session.id'), nullable=False)
+    filename = db.Column(db.String(255), nullable=False)
+    summary = db.Column(db.Text, nullable=True)
+    full_text_content = db.Column(db.Text, nullable=True) # Store full text for context
+    uploaded_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+
+    def __repr__(self):
+        return f"UploadedFile(Session ID: {self.session_id}, Filename: {self.filename})"
+
+# Mindmap model
+class Mindmap(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('chat_session.id'), unique=True, nullable=False)
+    mindmap_data = db.Column(db.JSON, nullable=False) # Store mindmap as JSON
+    generated_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+
+    def __repr__(self):
+        return f"Mindmap(Session ID: {self.session_id})"
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
+
+# Create database tables
+with app.app_context():
+    db.create_all()
+
+# --- Authentication Routes ---
+@app.route("/register", methods=["POST"])
+def register():
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
+
+    if not username or not password:
+        return jsonify({"message": "Username and password are required"}), 400
+
+    if User.query.filter_by(username=username).first():
+        return jsonify({"message": "Username already exists"}), 409
+
+    new_user = User(username=username)
+    new_user.set_password(password)
+    db.session.add(new_user)
+    db.session.commit()
+    return jsonify({"message": "User registered successfully"}), 201
+
+@app.route("/login", methods=["POST"])
+def login():
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
+
+    user = User.query.filter_by(username=username).first()
+
+    if user and user.check_password(password):
+        login_user(user) # Log in the user
+        return jsonify({"message": "Login successful", "username": user.username}), 200
+    else:
+        return jsonify({"message": "Invalid username or password"}), 401
+
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    return jsonify({"message": "Logged out successfully"}), 200
+
+@app.route("/current_user")
+def get_current_user():
+    if current_user.is_authenticated:
+        return jsonify({"username": current_user.username, "id": current_user.id}), 200
+    else:
+        return jsonify({"username": None}), 200
+
+# --- Chat Session Management Routes ---
+@app.route("/sessions", methods=["GET"])
+@login_required
+def get_sessions():
+    sessions = ChatSession.query.filter_by(user_id=current_user.id).order_by(ChatSession.created_at.desc()).all()
+    return jsonify([
+        {"id": s.id, "title": s.title, "created_at": s.created_at.isoformat()}
+        for s in sessions
+    ]), 200
+
+@app.route("/sessions", methods=["POST"])
+@login_required
+def create_session():
+    data = request.json
+    title = data.get('title', f"New Session {len(current_user.chat_sessions) + 1}")
+
+    new_session = ChatSession(user_id=current_user.id, title=title)
+    db.session.add(new_session)
+    db.session.commit()
+    return jsonify({"message": "Session created", "id": new_session.id, "title": new_session.title}), 201
+
+@app.route("/sessions/<int:session_id>", methods=["GET"])
+@login_required
+def get_session_data(session_id):
+    session = ChatSession.query.filter_by(id=session_id, user_id=current_user.id).first_or_404()
+
+    messages = ChatMessage.query.filter_by(session_id=session.id).order_by(ChatMessage.timestamp.asc()).all()
+    files = UploadedFile.query.filter_by(session_id=session.id).order_by(UploadedFile.uploaded_at.asc()).all()
+    mindmap = Mindmap.query.filter_by(session_id=session.id).first()
+
+    return jsonify({
+        "id": session.id,
+        "title": session.title,
+        "created_at": session.created_at.isoformat(),
+        "messages": [
+            {"sender": m.sender, "content": m.content, "timestamp": m.timestamp.isoformat()}
+            for m in messages
+        ],
+        "files": [
+            {"id": f.id, "filename": f.filename, "summary": f.summary, "fullText": f.full_text_content, "uploaded_at": f.uploaded_at.isoformat()}
+            for f in files
+        ],
+        "mindmap": mindmap.mindmap_data if mindmap else None
+    }), 200
+
+@app.route("/sessions/<int:session_id>", methods=["DELETE"])
+@login_required
+def delete_session(session_id):
+    session = ChatSession.query.filter_by(id=session_id, user_id=current_user.id).first_or_404()
+    db.session.delete(session)
+    db.session.commit()
+    return jsonify({"message": "Session deleted"}), 200
 
 def get_gemini_response(prompt):
     print(f"Sending prompt to Gemini: {prompt[:200]}...") # Log first 200 chars of prompt
@@ -54,8 +236,31 @@ def filter_notes_section(text):
     filtered_lines = [line for line in lines if not re.match(r'^(Note|Notes)[:\s].*', line, re.IGNORECASE)]
     return '\n'.join(filtered_lines)
 
+@app.route("/sessions/<int:session_id>/messages", methods=["POST"])
+@login_required
+def save_message(session_id):
+    session = ChatSession.query.filter_by(id=session_id, user_id=current_user.id).first_or_404()
+    data = request.json
+    sender = data.get('sender')
+    content = data.get('content')
+
+    if not sender or not content:
+        return jsonify({"message": "Sender and content are required"}), 400
+
+    new_message = ChatMessage(session_id=session.id, sender=sender, content=content)
+    db.session.add(new_message)
+    db.session.commit()
+    return jsonify({"message": "Message saved", "id": new_message.id}), 201
+
 @app.route("/upload", methods=["POST"])
+@login_required
 def upload_file():
+    session_id = request.form.get('session_id')
+    if not session_id:
+        return jsonify({"message": "Session ID is required"}), 400
+
+    session = ChatSession.query.filter_by(id=session_id, user_id=current_user.id).first_or_404()
+
     if 'file' not in request.files:
         return jsonify({"message": "No file part"}), 400
     file = request.files['file']
@@ -63,18 +268,19 @@ def upload_file():
         return jsonify({"message": "No selected file"}), 400
     if file:
         filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
+        # Temporarily save file to process, then delete
+        temp_filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(temp_filepath)
 
         text = ""
         if filename.lower().endswith('.pdf'):
-            with pdfplumber.open(filepath) as pdf:
+            with pdfplumber.open(temp_filepath) as pdf:
                 text = '\n'.join(page.extract_text() for page in pdf.pages)
         else:
-            with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+            with open(temp_filepath, 'r', encoding='utf-8', errors='ignore') as f:
                 text = f.read()
 
-        os.remove(filepath) # clean up
+        os.remove(temp_filepath) # Clean up temporary file
 
         try:
             filtered_text = filter_notes_section(text)
@@ -96,7 +302,17 @@ Text:
 
         summary_text = summary_response["text"]
 
-        return jsonify({"summary": summary_text, "fullText": filtered_text})
+        # Save file metadata to database
+        new_uploaded_file = UploadedFile(
+            session_id=session.id,
+            filename=filename,
+            summary=summary_text,
+            full_text_content=filtered_text
+        )
+        db.session.add(new_uploaded_file)
+        db.session.commit()
+
+        return jsonify({"summary": summary_text, "fullText": filtered_text, "file_id": new_uploaded_file.id})
 
 def parse_text_to_list(text):
     lines = text.split('\n')
@@ -112,15 +328,25 @@ def parse_text_to_list(text):
     return parsed_list if parsed_list else [text] # Return original text as single item if no list format found
 
 @app.route("/gemini_completion", methods=["POST"])
+@login_required
 def gemini_completion():
     data = request.json
     prompt = data.get("prompt", "")
     pdf_content = data.get("pdfContent", "")
-    is_first_message = data.get("isFirstMessage", False) # Retrieve the flag
+    session_id = data.get("session_id")
+
+    if not session_id:
+        return jsonify({"message": "Session ID is required"}), 400
+    session = ChatSession.query.filter_by(id=session_id, user_id=current_user.id).first_or_404()
 
     if not prompt:
         return jsonify({"message": "No prompt provided"}), 400
     
+    # Save user message
+    user_message = ChatMessage(session_id=session.id, sender='user', content=prompt)
+    db.session.add(user_message)
+    db.session.commit()
+
     full_prompt_text = prompt
     if pdf_content: # Always prepend if pdf_content exists
         full_prompt_text = f"Document Content:\n{pdf_content}\n\n{prompt}"
@@ -129,12 +355,23 @@ def gemini_completion():
     if "error" in gemini_response:
         return jsonify({"message": "Error getting completion from Gemini API", "details": gemini_response["error"]}), 500
     else:
-        return jsonify({"content": gemini_response["text"]})
+        gemini_text = gemini_response["text"]
+        # Save Gemini response
+        gemini_message = ChatMessage(session_id=session.id, sender='gemini', content=gemini_text)
+        db.session.add(gemini_message)
+        db.session.commit()
+        return jsonify({"content": gemini_text})
 
 @app.route("/summarize_conversation", methods=["POST"])
+@login_required
 def summarize_conversation():
     data = request.json
     conversation_history = data.get("conversation_history", "")
+    session_id = data.get("session_id")
+
+    if not session_id:
+        return jsonify({"message": "Session ID is required"}), 400
+    session = ChatSession.query.filter_by(id=session_id, user_id=current_user.id).first_or_404()
 
     if not conversation_history:
         return jsonify({"message": "No conversation history provided"}), 400
@@ -152,9 +389,15 @@ Conversation History:
         return jsonify({"summary": summary_response["text"]})
 
 @app.route("/generate-mindmap", methods=["POST"])
+@login_required
 def generate_mindmap():
     data = request.json
     full_text = data.get("fullText", "")
+    session_id = data.get("session_id")
+
+    if not session_id:
+        return jsonify({"message": "Session ID is required"}), 400
+    session = ChatSession.query.filter_by(id=session_id, user_id=current_user.id).first_or_404()
 
     if not full_text:
         return jsonify({"message": "No text provided for mind map generation"}), 400
@@ -179,6 +422,16 @@ Document:
             mindmap_content = mindmap_content[7:-3].strip()
         mindmap_json = json.loads(mindmap_content)
         print(f"Mindmap JSON to be returned: {mindmap_json}")
+        
+        # Save mindmap data to database
+        existing_mindmap = Mindmap.query.filter_by(session_id=session.id).first()
+        if existing_mindmap:
+            existing_mindmap.mindmap_data = mindmap_json
+        else:
+            new_mindmap = Mindmap(session_id=session.id, mindmap_data=mindmap_json)
+            db.session.add(new_mindmap)
+        db.session.commit()
+
         return jsonify(mindmap_json)
     except json.JSONDecodeError as e:
         print(f"Error decoding mind map JSON: {e}")

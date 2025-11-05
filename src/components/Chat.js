@@ -6,7 +6,7 @@ const systemPrompt = "You are AurenLM, a tutor-like chatbot. Your goal is to hel
 
 const MAX_CONVERSATION_LENGTH = 2000; // Max characters before summarizing old conversation
 
-function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap, fileUploadSummary, setFileUploadSummary }) {
+function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap, fileUploadSummary, setFileUploadSummary, currentSessionId, initialMessages }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [conversation, setConversation] = useState(systemPrompt);
@@ -18,6 +18,11 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
 
   // Function to send a query to Gemini and update chat
   const sendQueryToGemini = useCallback(async (queryText, isInitial = false) => {
+    if (!currentSessionId) {
+      alert("Please select or create a session first.");
+      return;
+    }
+
     let currentConversationState = conversation; // Use a local variable for current state
 
     // Conditionally summarize old conversation if it gets too long
@@ -25,8 +30,8 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
       try {
         const summaryResponse = await axios.post(
           'http://localhost:5000/summarize_conversation',
-          { conversation_history: currentConversationState },
-          { headers: { 'Content-Type': 'application/json' } }
+          { conversation_history: currentConversationState, session_id: currentSessionId },
+          { headers: { 'Content-Type': 'application/json' }, withCredentials: true }
         );
         if (summaryResponse.data && summaryResponse.data.summary) {
           currentConversationState = systemPrompt + `
@@ -56,10 +61,11 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
         {
           prompt: currentConversationState, // Use the updated conversation
           pdfContent: sessionPdfContent,
-          isFirstMessage: isInitial
+          session_id: currentSessionId
         },
         {
           headers: { 'Content-Type': 'application/json' },
+          withCredentials: true
         }
       );
 
@@ -77,16 +83,16 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
       const errorMessage = { text: 'Error getting response from AI.', sender: 'ai' };
       setMessages(prev => [...prev, errorMessage]);
     }
-  }, [conversation, sessionPdfContent, sessionContextPrompt]);
+  }, [conversation, sessionPdfContent, sessionContextPrompt, currentSessionId]);
 
-  // This effect sets up the context for a new chat session.
+  // This effect sets up the context for a new chat session or loads initial messages.
   useEffect(() => {
     setConversation(systemPrompt);
     setInput('');
     setSessionPdfContent(pdfContent || '');
     setSessionContextPrompt(contextPrompt || '');
-    setMessages([]); // Always clear messages on new context, unless fileUploadSummary is present
-  }, [contextPrompt, pdfContent]);
+    setMessages(initialMessages || []); // Load initial messages
+  }, [contextPrompt, pdfContent, initialMessages]);
 
   // Effect to handle mindmap queries
   useEffect(() => {

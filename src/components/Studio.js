@@ -44,7 +44,7 @@ const CustomMindmapNode = ({ data }) => {
   );
 };
 
-function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery }) {
+function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, currentSessionId, initialMindmapData }) {
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -190,13 +190,28 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery }) {
     }
   }, [fullMindmapData, buildReactFlowElements]);
 
+  // Effect to load initial mindmap data
+  useEffect(() => {
+    if (initialMindmapData) {
+      setFullMindmapData(initialMindmapData);
+      setShowMindmap(true);
+    } else {
+      setFullMindmapData(null);
+      setShowMindmap(false);
+    }
+  }, [initialMindmapData]);
 
   const generateMindmap = async () => {
+    if (!currentSessionId) {
+      alert("Please select or create a session first.");
+      return;
+    }
     setLoading(true);
     try {
       const response = await axios.post('http://localhost:5000/generate-mindmap', {
         fullText: sessionPdfContent,
-      });
+        session_id: currentSessionId,
+      }, { withCredentials: true });
 
       const mindmapData = response.data;
       console.log("Mindmap data from backend:", mindmapData);
