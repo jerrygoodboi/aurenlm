@@ -152,10 +152,15 @@ function App() {
             item.file === file ? { 
               ...item, 
               summary: result.summary,
-              fullText: result.fullText 
+              fullText: result.fullText,
+              id: result.file_id // Make sure to update the id here
             } : item
           )
         );
+        // If no document was previously selected, select this one
+        if (!selectedDocumentId) {
+          setSelectedDocumentId(result.file_id);
+        }
         setChatContext(prev => ({
           ...prev,
           fullText: (prev?.fullText || '') + '\n\n' + result.fullText,

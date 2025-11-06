@@ -95,15 +95,15 @@ class Mindmap(db.Model):
 # Quiz model
 class Quiz(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    document_id = db.Column(db.Integer, db.ForeignKey('uploaded_file.id'), nullable=False)
+    session_id = db.Column(db.Integer, db.ForeignKey('chat_session.id'), nullable=False)
     difficulty = db.Column(db.String(20), nullable=False, default='Normal')
     quiz_data = db.Column(db.JSON, nullable=False)
     generated_at = db.Column(db.DateTime, default=db.func.current_timestamp())
 
-    document = db.relationship('UploadedFile', backref=db.backref('quizzes', lazy=True, cascade="all, delete-orphan"))
+    session = db.relationship('ChatSession', backref=db.backref('quizzes', lazy=True, cascade="all, delete-orphan"))
 
     def __repr__(self):
-        return f"Quiz(Document ID: {self.document_id}, Difficulty: {self.difficulty})"
+        return f"Quiz(Session ID: {self.session_id}, Difficulty: {self.difficulty})"
 
 # Quiz Attempt model
 class QuizAttempt(db.Model):
@@ -561,24 +561,28 @@ Document:
     except json.JSONDecodeError as e:
         return None, "Error decoding quiz from LLM response"
 
-@app.route("/api/documents/<int:document_id>/generate_quiz", methods=["POST"])
+@app.route("/api/sessions/<int:session_id>/generate_quiz", methods=["POST"])
 @login_required
-def generate_quiz(document_id):
-    document = UploadedFile.query.get_or_404(document_id)
-    # Ensure the document belongs to the current user's session
-    if document.session.user_id != current_user.id:
+def generate_quiz_for_session(session_id):
+    session = ChatSession.query.get_or_404(session_id)
+    if session.user_id != current_user.id:
         return jsonify({"message": "Unauthorized"}), 403
 
     data = request.json
     difficulty = data.get("difficulty", "Normal")
 
-    quiz_data, error = generate_quiz_from_text(document.full_text_content, difficulty)
+    all_docs_text = "\n\n".join([f.full_text_content for f in session.files if f.full_text_content])
+
+    if not all_docs_text:
+        return jsonify({"message": "No document content available in this session to generate a quiz."}), 400
+
+    quiz_data, error = generate_quiz_from_text(all_docs_text, difficulty)
 
     if error:
         return jsonify({"message": error}), 500
 
     new_quiz = Quiz(
-        document_id=document.id,
+        session_id=session.id,
         difficulty=difficulty,
         quiz_data=quiz_data
     )
@@ -587,24 +591,24 @@ def generate_quiz(document_id):
 
     return jsonify({
         "id": new_quiz.id,
-        "document_id": new_quiz.document_id,
+        "session_id": new_quiz.session_id,
         "difficulty": new_quiz.difficulty,
         "quiz_data": new_quiz.quiz_data,
         "generated_at": new_quiz.generated_at.isoformat()
     })
 
-@app.route("/api/documents/<int:document_id>/quizzes", methods=["GET"])
+@app.route("/api/sessions/<int:session_id>/quizzes", methods=["GET"])
 @login_required
-def get_quizzes_for_document(document_id):
-    document = UploadedFile.query.get_or_404(document_id)
-    if document.session.user_id != current_user.id:
+def get_quizzes_for_session(session_id):
+    session = ChatSession.query.get_or_404(session_id)
+    if session.user_id != current_user.id:
         return jsonify({"message": "Unauthorized"}), 403
 
-    quizzes = Quiz.query.filter_by(document_id=document.id).order_by(Quiz.generated_at.desc()).all()
+    quizzes = Quiz.query.filter_by(session_id=session.id).order_by(Quiz.generated_at.desc()).all()
     return jsonify([
         {
             "id": q.id,
-            "document_id": q.document_id,
+            "session_id": q.session_id,
             "difficulty": q.difficulty,
             "quiz_data": q.quiz_data,
             "generated_at": q.generated_at.isoformat()

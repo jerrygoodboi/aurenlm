@@ -293,13 +293,13 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
   };
 
   const handleGenerateQuiz = async () => {
-    if (!documentId) {
-      showError("Please select a document first.");
+    if (!currentSessionId) {
+      showError("Please select a session first.");
       return;
     }
     setQuizLoading(true);
     try {
-      const response = await axios.post(`http://localhost:5000/api/documents/${documentId}/generate_quiz`, 
+      const response = await axios.post(`http://localhost:5000/api/sessions/${currentSessionId}/generate_quiz`, 
         { difficulty: 'Normal' },
         { withCredentials: true }
       );
@@ -315,15 +315,15 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
   };
 
   const fetchQuizHistory = useCallback(async () => {
-    if (documentId) {
+    if (currentSessionId) {
       try {
-        const response = await axios.get(`http://localhost:5000/api/documents/${documentId}/quizzes`, { withCredentials: true });
+        const response = await axios.get(`http://localhost:5000/api/sessions/${currentSessionId}/quizzes`, { withCredentials: true });
         setQuizHistory(response.data);
       } catch (error) {
         console.error("Error fetching quiz history:", error);
       }
     }
-  }, [documentId]);
+  }, [currentSessionId]);
 
   useEffect(() => {
     fetchQuizHistory();
@@ -399,10 +399,10 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
           </Button>
 
           {fullMindmapData && (
-            <Box sx={{ mb: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <Box sx={{ mb: 2, display: 'flex', gap: 1 }}>
               <Button
                 variant="outlined"
-                fullWidth
+                sx={{ flexGrow: 1 }}
                 onClick={() => setShowMindmap(!showMindmap)}
               >
                 {showMindmap ? 'Hide Mind Map' : 'Show Mind Map'}
@@ -410,6 +410,7 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
               {showMindmap && (
                 <Button
                   variant="outlined"
+                  sx={{ flexGrow: 1 }}
                   onClick={() => setIsMindmapFullscreen(true)}
                   startIcon={<FullscreenIcon />}
                 >
