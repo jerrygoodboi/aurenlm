@@ -242,6 +242,52 @@ def delete_document(document_id):
 
     return jsonify({"message": "Document deleted successfully"}), 200
 
+@app.route("/api/sessions/<int:session_id>/generate-title", methods=["POST"])
+@login_required
+def generate_session_title(session_id):
+    session = ChatSession.query.get_or_404(session_id)
+    if session.user_id != current_user.id:
+        return jsonify({"message": "Unauthorized"}), 403
+
+    first_file = session.files[0] if session.files else None
+
+    if not first_file or not first_file.full_text_content:
+        return jsonify({"message": "No content available to generate title."}), 400
+
+    title_prompt = f"""Generate a short, concise title (5-10 words) for a document with the following content. The title should capture the main subject of the text. Respond with only the title and nothing else.
+
+Content:
+{first_file.full_text_content[:2000]}"""
+
+    title_response = get_gemini_response(title_prompt)
+
+    if "error" in title_response:
+        return jsonify({"message": "Error generating title", "details": title_response["error"]}), 500
+
+    new_title = title_response["text"].strip().strip('"')
+    session.title = new_title
+    db.session.commit()
+
+    return jsonify({"id": session.id, "title": new_title})
+
+@app.route("/api/sessions/<int:session_id>/rename", methods=["PUT"])
+@login_required
+def rename_session(session_id):
+    session = ChatSession.query.get_or_404(session_id)
+    if session.user_id != current_user.id:
+        return jsonify({"message": "Unauthorized"}), 403
+
+    data = request.json
+    new_title = data.get("title")
+
+    if not new_title or not new_title.strip():
+        return jsonify({"message": "Title cannot be empty"}), 400
+
+    session.title = new_title
+    db.session.commit()
+
+    return jsonify({"id": session.id, "title": session.title})
+
 import os
 import requests
 import pdfplumber

@@ -26,10 +26,27 @@ function App() {
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [sessionData, setSessionData] = useState(null); // To store loaded session data
   const [selectedDocumentId, setSelectedDocumentId] = useState(null);
+  const [sessions, setSessions] = useState([]); // New state for session list
 
   const { mode, toggleTheme } = useContext(ThemeContext);
   const { isAuthenticated, loading, logout } = useContext(AuthContext);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+
+  // Fetch sessions on component mount and when a new session is created
+  const fetchSessions = useCallback(async () => {
+    if (isAuthenticated) {
+      try {
+        const response = await axios.get("http://localhost:5000/sessions", { withCredentials: true });
+        setSessions(response.data);
+      } catch (error) {
+        console.error("Error fetching sessions:", error);
+      }
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    fetchSessions();
+  }, [fetchSessions]);
 
   // Keyboard shortcuts handler
   useEffect(() => {
@@ -144,11 +161,28 @@ function App() {
 
   const handleFileChange = async (event) => {
     const selectedFiles = Array.from(event.target.files);
+    const isFirstUpload = files.length === 0;
+
     for (const file of selectedFiles) {
       setFiles(prevFiles => [...prevFiles, { file: file, summary: "Summarizing...", fullText: "" }]);
 
       const result = await uploadAndSummarize(file);
       if (result && typeof result.summary === 'string') {
+        // This is the first file in the session, generate a title
+        if (isFirstUpload) {
+          try {
+            const titleResponse = await axios.post(`http://localhost:5000/api/sessions/${currentSessionId}/generate-title`, {}, { withCredentials: true });
+            if (titleResponse.data && titleResponse.data.title) {
+              // Update the title in the main sessions list
+              setSessions(prevSessions => 
+                prevSessions.map(s => s.id === currentSessionId ? { ...s, title: titleResponse.data.title } : s)
+              );
+            }
+          } catch (titleError) {
+            console.error("Error generating session title:", titleError);
+          }
+        }
+
         setFiles(prevFiles =>
           prevFiles.map(item =>
             item.file === file ? { 
@@ -201,6 +235,19 @@ function App() {
     } catch (error) {
       console.error("Error removing document:", error);
       // Optionally, show a notification to the user
+    }
+  };
+
+  const handleCreateNewSession = async () => {
+    try {
+      const defaultTitle = `New Session - ${new Date().toLocaleString()}`;
+      const response = await axios.post('http://localhost:5000/sessions', { title: defaultTitle }, { withCredentials: true });
+      if (response.status === 201) {
+        fetchSessions(); // Refresh the list of sessions
+        setCurrentSessionId(response.data.id); // Select the new session
+      }
+    } catch (error) {
+      console.error("Error creating new session:", error);
     }
   };
 
@@ -277,7 +324,12 @@ function App() {
               onRemoveDocument={handleRemoveDocument}
             />
           ) : (
-            <ChatSessionList onSelectSession={setCurrentSessionId} currentSessionId={currentSessionId} />
+            <ChatSessionList 
+              onSelectSession={setCurrentSessionId} 
+              currentSessionId={currentSessionId} 
+              sessions={sessions}
+              onSessionCreated={fetchSessions} // To refresh list after creation
+            />
           )}
         </Box>
         <Box sx={{
@@ -306,7 +358,7 @@ function App() {
               initialMessages={chatContext?.initialMessages || []}
             />
           ) : (
-            <EmptyChatState onCreateSession={() => setCurrentSessionId(null)} />
+            <EmptyChatState onCreateSession={handleCreateNewSession} />
           )}
         </Box>
         <Box sx={{
