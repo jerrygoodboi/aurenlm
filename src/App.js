@@ -25,6 +25,7 @@ function App() {
   const [fileUploadSummary, setFileUploadSummary] = useState(null);
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [sessionData, setSessionData] = useState(null); // To store loaded session data
+  const [selectedDocumentId, setSelectedDocumentId] = useState(null);
 
   const { mode, toggleTheme } = useContext(ThemeContext);
   const { isAuthenticated, loading, logout } = useContext(AuthContext);
@@ -84,7 +85,11 @@ function App() {
             initialMessages: loadedMessages
           });
           // Populate document list
-          setFiles(response.data.files.map(f => ({ file: { name: f.filename }, summary: f.summary, fullText: f.fullText, id: f.id })));
+          const files = response.data.files.map(f => ({ file: { name: f.filename }, summary: f.summary, fullText: f.fullText, id: f.id }));
+          setFiles(files);
+          if (files.length > 0) {
+            setSelectedDocumentId(files[0].id);
+          }
         } catch (error) {
           console.error("Error loading session data:", error);
           setSessionData(null);
@@ -237,6 +242,7 @@ function App() {
               isOpen={leftPanelOpen}
               togglePanel={() => setLeftPanelOpen(!leftPanelOpen)}
               currentSessionId={currentSessionId}
+              onDocumentSelect={setSelectedDocumentId}
             />
           ) : (
             <ChatSessionList onSelectSession={setCurrentSessionId} currentSessionId={currentSessionId} />
@@ -295,6 +301,7 @@ function App() {
               onMindmapQuery={setChatQueryFromMindmap}
               currentSessionId={currentSessionId}
               initialMindmapData={sessionData?.mindmap} // Pass initial mindmap data
+              documentId={selectedDocumentId}
             />
           ) : (
             null

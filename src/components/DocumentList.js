@@ -1,14 +1,15 @@
 import React from 'react';
-import { Button, List, ListItem, ListItemText, Typography, Box, IconButton, Tooltip } from '@mui/material';
+import { Button, List, ListItem, ListItemText, Typography, Box, IconButton, Tooltip, Paper } from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { useNotification } from '../hooks/useNotification';
 
-function DocumentList({ files, onMainPointClick, onFileUpload, isOpen, togglePanel, currentSessionId }) {
+function DocumentList({ files, onMainPointClick, onFileUpload, isOpen, togglePanel, currentSessionId, onDocumentSelect }) {
   const { showError } = useNotification();
 
   const handleDocumentClick = (fileItem) => {
     onMainPointClick(fileItem.fullText, null);
+    onDocumentSelect(fileItem.id);
   }
 
   const handleFileUploadChange = (event) => {
@@ -49,8 +50,8 @@ function DocumentList({ files, onMainPointClick, onFileUpload, isOpen, togglePan
         </Tooltip>
       </Box>
       {isOpen && (
-        <>
-          <Box sx={{ px: 2, pb: 2, pt: 2 }}>
+        <Paper elevation={3} sx={{ flexGrow: 1, p: 2, width: '100%', height: '100%' }}>
+          <Box sx={{ pb: 2 }}>
             <input
               type="file"
               multiple
@@ -87,7 +88,7 @@ function DocumentList({ files, onMainPointClick, onFileUpload, isOpen, togglePan
               </ListItem>
             ))}
           </List>
-        </>
+        </Paper>
       )}
     </Box>
   );

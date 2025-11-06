@@ -330,7 +330,7 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
           </>
         )}
       </Paper>
-      <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
+      <Box sx={{ display: 'flex', gap: 1 }}>
         <TextField
           fullWidth
           multiline
@@ -348,7 +348,7 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
           onClick={handleSend} 
           disabled={!input.trim() || isAIThinking}
           startIcon={<SendIcon />}
-          sx={{ minWidth: '100px' }}
+          sx={{ minWidth: '100px', height: '56px' }}
         >
           Send
         </Button>

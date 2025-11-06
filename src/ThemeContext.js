@@ -14,6 +14,9 @@ export const ThemeProvider = ({ children }) => {
   const theme = useMemo(
     () =>
       createTheme({
+        typography: {
+          fontFamily: "'GoogleSans-Regular', sans-serif",
+        },
         palette: {
           mode,
           ...(mode === 'light'

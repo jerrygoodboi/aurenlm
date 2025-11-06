@@ -92,6 +92,35 @@ class Mindmap(db.Model):
     def __repr__(self):
         return f"Mindmap(Session ID: {self.session_id})"
 
+# Quiz model
+class Quiz(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    document_id = db.Column(db.Integer, db.ForeignKey('uploaded_file.id'), nullable=False)
+    difficulty = db.Column(db.String(20), nullable=False, default='Normal')
+    quiz_data = db.Column(db.JSON, nullable=False)
+    generated_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+
+    document = db.relationship('UploadedFile', backref=db.backref('quizzes', lazy=True, cascade="all, delete-orphan"))
+
+    def __repr__(self):
+        return f"Quiz(Document ID: {self.document_id}, Difficulty: {self.difficulty})"
+
+# Quiz Attempt model
+class QuizAttempt(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    quiz_id = db.Column(db.Integer, db.ForeignKey('quiz.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    answers = db.Column(db.JSON, nullable=False)
+    score = db.Column(db.Float, nullable=False)
+    attempted_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+
+    quiz = db.relationship('Quiz', backref=db.backref('attempts', lazy=True))
+    user = db.relationship('User', backref=db.backref('quiz_attempts', lazy=True))
+
+    def __repr__(self):
+        return f"QuizAttempt(Quiz ID: {self.quiz_id}, User ID: {self.user_id}, Score: {self.score})"
+
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
@@ -506,6 +535,121 @@ Document:
         return jsonify(mindmap_json)
     except json.JSONDecodeError as e:
         return jsonify({"message": "Error decoding mind map from LLM response"}), 500
+
+def generate_quiz_from_text(document_text, difficulty):
+    quiz_prompt = f"""Generate a multiple-choice quiz from the following document. The quiz should have between 5 and 10 questions. The difficulty of the quiz should be '{difficulty}'.
+Your response MUST be a single JSON object, and ONLY the JSON object.
+The JSON object must have a 'title' key and a 'questions' array.
+Each object in the 'questions' array must have a 'question' (string), 'options' (array of strings), and a 'correct_answer' (string).
+Ensure the JSON is perfectly formed and contains no other text or markdown outside of the JSON object.
+
+Document:
+{document_text[:4000]}"""
+
+    quiz_response = get_gemini_response(quiz_prompt)
+
+    if "error" in quiz_response:
+        return None, quiz_response["error"]
+
+    quiz_content = quiz_response["text"]
+
+    try:
+        if quiz_content.startswith("```json") and quiz_content.endswith("```"):
+            quiz_content = quiz_content[7:-3].strip()
+        quiz_json = json.loads(quiz_content)
+        return quiz_json, None
+    except json.JSONDecodeError as e:
+        return None, "Error decoding quiz from LLM response"
+
+@app.route("/api/documents/<int:document_id>/generate_quiz", methods=["POST"])
+@login_required
+def generate_quiz(document_id):
+    document = UploadedFile.query.get_or_404(document_id)
+    # Ensure the document belongs to the current user's session
+    if document.session.user_id != current_user.id:
+        return jsonify({"message": "Unauthorized"}), 403
+
+    data = request.json
+    difficulty = data.get("difficulty", "Normal")
+
+    quiz_data, error = generate_quiz_from_text(document.full_text_content, difficulty)
+
+    if error:
+        return jsonify({"message": error}), 500
+
+    new_quiz = Quiz(
+        document_id=document.id,
+        difficulty=difficulty,
+        quiz_data=quiz_data
+    )
+    db.session.add(new_quiz)
+    db.session.commit()
+
+    return jsonify({
+        "id": new_quiz.id,
+        "document_id": new_quiz.document_id,
+        "difficulty": new_quiz.difficulty,
+        "quiz_data": new_quiz.quiz_data,
+        "generated_at": new_quiz.generated_at.isoformat()
+    })
+
+@app.route("/api/documents/<int:document_id>/quizzes", methods=["GET"])
+@login_required
+def get_quizzes_for_document(document_id):
+    document = UploadedFile.query.get_or_404(document_id)
+    if document.session.user_id != current_user.id:
+        return jsonify({"message": "Unauthorized"}), 403
+
+    quizzes = Quiz.query.filter_by(document_id=document.id).order_by(Quiz.generated_at.desc()).all()
+    return jsonify([
+        {
+            "id": q.id,
+            "document_id": q.document_id,
+            "difficulty": q.difficulty,
+            "quiz_data": q.quiz_data,
+            "generated_at": q.generated_at.isoformat()
+        }
+        for q in quizzes
+    ])
+
+@app.route("/api/quizzes/<int:quiz_id>/submit", methods=["POST"])
+@login_required
+def submit_quiz(quiz_id):
+    quiz = Quiz.query.get_or_404(quiz_id)
+    data = request.json
+    answers = data.get("answers")
+
+    if not answers:
+        return jsonify({"message": "No answers provided"}), 400
+
+    correct_answers = 0
+    total_questions = len(quiz.quiz_data['questions'])
+
+    for i, question in enumerate(quiz.quiz_data['questions']):
+        if str(i) in answers and answers[str(i)] == question['correct_answer']:
+            correct_answers += 1
+
+    score = (correct_answers / total_questions) * 100 if total_questions > 0 else 0
+
+    new_attempt = QuizAttempt(
+        quiz_id=quiz.id,
+        user_id=current_user.id,
+        answers=answers,
+        score=score
+    )
+    db.session.add(new_attempt)
+    db.session.commit()
+
+    correct_answers_map = {i: q['correct_answer'] for i, q in enumerate(quiz.quiz_data['questions'])}
+
+    return jsonify({
+        "message": "Quiz submitted successfully",
+        "score": score,
+        "correct_answers": correct_answers,
+        "total_questions": total_questions,
+        "correct_answers_map": correct_answers_map
+    })
+
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
