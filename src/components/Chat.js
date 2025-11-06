@@ -301,19 +301,6 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
                     </Typography>
                   )}
                   
-                  {message.timestamp && (
-                    <Typography 
-                      variant="caption" 
-                      sx={{ 
-                        display: 'block', 
-                        mt: 0.5, 
-                        opacity: 0.6,
-                        fontSize: '0.75rem'
-                      }}
-                    >
-                      {formatDistanceToNow(message.timestamp, { addSuffix: true })}
-                    </Typography>
-                  )}
                 </Paper>
               </Box>
             ))}

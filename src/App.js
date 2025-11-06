@@ -55,11 +55,33 @@ function App() {
         try {
           const response = await axios.get(`http://localhost:5000/sessions/${currentSessionId}`, { withCredentials: true });
           setSessionData(response.data);
+
+          let loadedMessages = response.data.messages.map(msg => ({
+            sender: msg.sender === 'gemini' ? 'ai' : msg.sender,
+            text: msg.content
+          }));
+
+          const filesData = response.data.files;
+
+          if (filesData && filesData.length > 0) {
+            const summaries = filesData.map(f => f.summary);
+            const existingMessagesTexts = new Set(loadedMessages.map(m => m.text));
+            
+            const summaryMessagesToAdd = summaries
+              .filter(summary => !existingMessagesTexts.has(summary))
+              .map(summary => ({
+                sender: 'ai',
+                text: summary
+              }));
+
+            loadedMessages = [...summaryMessagesToAdd, ...loadedMessages];
+          }
+
           // Populate chat messages
           setChatContext({
             fullText: response.data.files.map(f => f.fullText).join('\n\n'), // Combine all file texts
             contextPrompt: null, // Reset context prompt
-            initialMessages: response.data.messages.map(msg => ({ sender: msg.sender, text: msg.content }))
+            initialMessages: loadedMessages
           });
           // Populate document list
           setFiles(response.data.files.map(f => ({ file: { name: f.filename }, summary: f.summary, fullText: f.fullText, id: f.id })));
