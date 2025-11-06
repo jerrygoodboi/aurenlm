@@ -487,14 +487,12 @@ Document:
 
     mindmap_content = mindmap_response["text"]
 
-    print(f"Mindmap content from LLM: {mindmap_content}")
     try:
         # The LLM might return a string that is a JSON object.
         # We need to parse it to make sure it's valid JSON.
         if mindmap_content.startswith("```json") and mindmap_content.endswith("```"):
             mindmap_content = mindmap_content[7:-3].strip()
         mindmap_json = json.loads(mindmap_content)
-        print(f"Mindmap JSON to be returned: {mindmap_json}")
         
         # Save mindmap data to database
         existing_mindmap = Mindmap.query.filter_by(session_id=session.id).first()
@@ -507,7 +505,6 @@ Document:
 
         return jsonify(mindmap_json)
     except json.JSONDecodeError as e:
-        print(f"Error decoding mind map JSON: {e}")
         return jsonify({"message": "Error decoding mind map from LLM response"}), 500
 
 if __name__ == "__main__":
