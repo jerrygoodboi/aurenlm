@@ -96,10 +96,13 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
   const [isMindmapFullscreen, setIsMindmapFullscreen] = useState(false);
   const { showError, showSuccess } = useNotification();
 
+  const [quizLoading, setQuizLoading] = useState(false);
+  const [notesLoading, setNotesLoading] = useState(false);
+
   const [quizOpen, setQuizOpen] = useState(false);
   const [currentQuiz, setCurrentQuiz] = useState(null);
   const [quizHistory, setQuizHistory] = useState([]);
-  const [quizLoading, setQuizLoading] = useState(false);
+  const [sessionNotes, setSessionNotes] = useState([]);
 
   const nodeTypes = useMemo(() => ({
     customMindmapNode: CustomMindmapNode,
@@ -325,9 +328,46 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
     }
   }, [currentSessionId]);
 
+  const fetchSessionNotes = useCallback(async () => {
+    if (currentSessionId) {
+      try {
+        const response = await axios.get(`http://localhost:5000/api/sessions/${currentSessionId}/notes`, { withCredentials: true });
+        setSessionNotes(response.data);
+      } catch (error) {
+        console.error("Error fetching session notes:", error);
+      }
+    }
+  }, [currentSessionId]);
+
   useEffect(() => {
     fetchQuizHistory();
-  }, [fetchQuizHistory]);
+    fetchSessionNotes();
+  }, [fetchQuizHistory, fetchSessionNotes]);
+
+  const handleGenerateSessionNotes = async () => {
+    if (!currentSessionId) {
+      showError("Please select a session first.");
+      return;
+    }
+    if (!sessionPdfContent) {
+      showError("No document content available in this session to generate notes from.");
+      return;
+    }
+    setNotesLoading(true);
+    try {
+      const response = await axios.post(`http://localhost:5000/api/sessions/${currentSessionId}/generate_notes`, 
+        { style: 'concise' },
+        { withCredentials: true, timeout: 120000 }
+      );
+      showSuccess("Session notes generated successfully!");
+      fetchSessionNotes(); // Refresh session notes
+    } catch (error) {
+      console.error("Error generating session notes:", error);
+      showError("Failed to generate session notes.");
+    } finally {
+      setNotesLoading(false);
+    }
+  };
 
   const handleQuizSubmit = async (answers) => {
     if (!currentQuiz) return;
@@ -397,6 +437,15 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
           >
             {quizLoading ? 'Generating...' : 'Generate Quiz'}
           </Button>
+          <Button
+            variant="contained"
+            fullWidth
+            onClick={handleGenerateSessionNotes}
+            disabled={loading || !sessionPdfContent || notesLoading}
+            sx={{ mb: 1 }}
+          >
+            {notesLoading ? 'Generating...' : 'Generate Session Notes'}
+          </Button>
 
           {fullMindmapData && (
             <Box sx={{ mb: 2, display: 'flex', gap: 1 }}>
@@ -464,6 +513,28 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
               <Typography variant="body2" color="text.secondary">No quizzes generated for this document yet.</Typography>
             )}
           </List>
+
+          <Divider sx={{ my: 2 }} />
+          <Typography variant="h6" sx={{ mb: 1 }}>Session Notes</Typography>
+          <List dense>
+            {sessionNotes.length > 0 ? (
+              sessionNotes.map((note) => (
+                <ListItem 
+                  key={note.id}
+                  button 
+                  onClick={() => window.open(note.pdf_url, '_blank')}
+                >
+                  <ListItemText 
+                    primary={`Notes from ${new Date(note.created_at).toLocaleDateString()}`}
+                    secondary="Click to Download PDF"
+                  />
+                </ListItem>
+              ))
+            ) : (
+              <Typography variant="body2" color="text.secondary">No session notes generated yet.</Typography>
+            )}
+          </List>
+
         </Paper>
       )}
 
