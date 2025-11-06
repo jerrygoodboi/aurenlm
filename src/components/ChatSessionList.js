@@ -3,6 +3,7 @@ import { Box, Typography, List, ListItem, ListItemText, Button, Dialog, DialogTi
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { useAuth } from '../AuthContext';
+import { useNotification } from '../hooks/useNotification';
 import axios from 'axios';
 
 function ChatSessionList({ onSelectSession, currentSessionId }) {
@@ -10,6 +11,7 @@ function ChatSessionList({ onSelectSession, currentSessionId }) {
   const [sessions, setSessions] = useState([]);
   const [openDialog, setOpenDialog] = useState(false);
   const [newSessionTitle, setNewSessionTitle] = useState('');
+  const { showSuccess, showError } = useNotification();
 
   const fetchSessions = async () => {
     try {
@@ -27,6 +29,10 @@ function ChatSessionList({ onSelectSession, currentSessionId }) {
   }, [user]);
 
   const handleCreateSession = async () => {
+    if (!newSessionTitle.trim()) {
+      showError('Please enter a session title');
+      return;
+    }
     try {
       const response = await axios.post('http://localhost:5000/sessions', { title: newSessionTitle }, { withCredentials: true, timeout: 30000 });
       if (response.status === 201) {
@@ -34,9 +40,11 @@ function ChatSessionList({ onSelectSession, currentSessionId }) {
         setNewSessionTitle('');
         setOpenDialog(false);
         onSelectSession(response.data.id); // Automatically select the new session
+        showSuccess('Session created successfully!');
       }
     } catch (error) {
       console.error("Error creating session:", error);
+      showError('Failed to create session. Please try again.');
     }
   };
 
@@ -48,8 +56,10 @@ function ChatSessionList({ onSelectSession, currentSessionId }) {
         if (currentSessionId === sessionId) {
           onSelectSession(null); // Deselect if the current session was deleted
         }
+        showSuccess('Session deleted successfully');
       } catch (error) {
         console.error("Error deleting session:", error);
+        showError('Failed to delete session. Please try again.');
       }
     }
   };

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Button, TextField, Typography, Container, Box, Paper, Alert } from '@mui/material';
 import { useAuth } from '../AuthContext';
+import { useNotification } from '../hooks/useNotification';
 
 function LoginPage() {
   const [isRegistering, setIsRegistering] = useState(false);
@@ -9,6 +10,7 @@ function LoginPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const { login, register } = useAuth();
+  const { showSuccess } = useNotification();
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -23,7 +25,7 @@ function LoginPage() {
       if (!result.success) {
         setError(result.message);
       } else {
-        alert("Registration successful! Please log in.");
+        showSuccess("Registration successful! Please log in.");
         setIsRegistering(false);
         setUsername('');
         setPassword('');

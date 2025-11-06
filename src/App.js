@@ -8,10 +8,13 @@ import DocumentList from './components/DocumentList';
 import Chat from './components/Chat';
 import Studio from './components/Studio';
 import ChatSessionList from './components/ChatSessionList';
+import { KeyboardShortcuts } from './components/KeyboardShortcuts';
+import { EmptyChatState } from './components/EmptyState';
 import axios from 'axios';
 import { ThemeContext } from './ThemeContext';
 import { AuthContext } from './AuthContext';
 import LoginPage from './components/LoginPage';
+import { SnackbarProvider } from 'notistack';
 
 function App() {
   const [chatContext, setChatContext] = useState(null);
@@ -25,6 +28,25 @@ function App() {
 
   const { mode, toggleTheme } = useContext(ThemeContext);
   const { isAuthenticated, loading, logout } = useContext(AuthContext);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+
+  // Keyboard shortcuts handler
+  useEffect(() => {
+    const handleKeyPress = (e) => {
+      // Show shortcuts with Cmd/Ctrl + /
+      if ((e.metaKey || e.ctrlKey) && e.key === '/') {
+        e.preventDefault();
+        setShortcutsOpen(true);
+      }
+      // Close with Esc
+      if (e.key === 'Escape') {
+        setShortcutsOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, []);
 
   // Effect to load session data when currentSessionId changes
   useEffect(() => {
@@ -137,7 +159,12 @@ function App() {
   }
 
   return (
-    <>
+    <SnackbarProvider 
+      maxSnack={3} 
+      anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      dense
+    >
+      <KeyboardShortcuts open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <AppBar position="static">
         <Toolbar>
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
@@ -219,7 +246,7 @@ function App() {
               initialMessages={chatContext?.initialMessages || []}
             />
           ) : (
-            null
+            <EmptyChatState onCreateSession={() => setCurrentSessionId(null)} />
           )}
         </Box>
         <Box sx={{
@@ -252,7 +279,7 @@ function App() {
           )}
         </Box>
       </Container>
-    </>
+    </SnackbarProvider>
   );
 }
 

@@ -10,6 +10,7 @@ import ReactFlow, { addEdge, applyEdgeChanges, applyNodeChanges, Controls, Backg
 import 'reactflow/dist/style.css';
 import axios from 'axios';
 import { useTheme } from '@mui/material/styles';
+import { useNotification } from '../hooks/useNotification';
 
 
 
@@ -96,6 +97,7 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
   const [showMindmap, setShowMindmap] = useState(false); // Controls visibility of the mindmap section
   const [fullMindmapData, setFullMindmapData] = useState(null); // Stores the full hierarchical data
   const [isMindmapFullscreen, setIsMindmapFullscreen] = useState(false); // Controls full-screen mode
+  const { showError, showSuccess } = useNotification();
 
 
   const nodeTypes = useMemo(() => ({
@@ -265,7 +267,7 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
 
   const generateMindmap = async () => {
     if (!currentSessionId) {
-      alert("Please select or create a session first.");
+      showError("Please select or create a session first.");
       return;
     }
     setLoading(true);
@@ -291,17 +293,18 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
       initializeCollapseState(mindmapData.nodes);
       setFullMindmapData(mindmapData); // Store the full data with collapse state
       setShowMindmap(true); // Show the mindmap section
+      showSuccess('Mind map generated successfully!');
 
     } catch (error) {
       console.error("Error generating mind map:", error);
       if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
-        alert('Request timed out. The AI is taking too long to generate the mind map. Please try again.');
+        showError('Request timed out. The AI is taking too long to generate the mind map. Please try again.');
       } else if (error.response) {
-        alert(`Error: ${error.response.data?.message || error.response.statusText || 'Server error'}`);
+        showError(`Error: ${error.response.data?.message || error.response.statusText || 'Server error'}`);
       } else if (error.request) {
-        alert('Network error. Please check your connection and try again.');
+        showError('Network error. Please check your connection and try again.');
       } else {
-        alert('An unexpected error occurred. Please try again.');
+        showError('An unexpected error occurred. Please try again.');
       }
     } finally {
       setLoading(false);

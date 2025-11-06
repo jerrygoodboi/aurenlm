@@ -2,8 +2,11 @@ import React from 'react';
 import { Button, List, ListItem, ListItemText, Typography, Box, IconButton, Tooltip } from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import { useNotification } from '../hooks/useNotification';
 
 function DocumentList({ files, onMainPointClick, onFileUpload, isOpen, togglePanel, currentSessionId }) {
+  const { showError } = useNotification();
+
   const handleDocumentClick = (fileItem) => {
     onMainPointClick(fileItem.fullText, null);
   }
@@ -12,7 +15,7 @@ function DocumentList({ files, onMainPointClick, onFileUpload, isOpen, togglePan
     if (currentSessionId) {
       onFileUpload(event, currentSessionId);
     } else {
-      alert("Please select or create a session first.");
+      showError("Please select or create a session first.");
     }
   };
 
