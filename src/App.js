@@ -89,6 +89,8 @@ function App() {
           setFiles(files);
           if (files.length > 0) {
             setSelectedDocumentId(files[0].id);
+          } else {
+            setSelectedDocumentId(null);
           }
         } catch (error) {
           console.error("Error loading session data:", error);
@@ -178,6 +180,30 @@ function App() {
     }
   };
 
+  const handleRemoveDocument = async (documentIdToRemove) => {
+    try {
+      // First, delete the document from the backend
+      await axios.delete(`http://localhost:5000/api/documents/${documentIdToRemove}`, { withCredentials: true });
+
+      // Then, update the local state
+      const updatedFiles = files.filter(file => file.id !== documentIdToRemove);
+      setFiles(updatedFiles);
+
+      // Recalculate fullText and update chatContext
+      const updatedFullText = updatedFiles.map(f => f.fullText).join('\n\n');
+      setChatContext(prev => ({ ...prev, fullText: updatedFullText }));
+
+      // If the removed document was the selected one, update the selection
+      if (selectedDocumentId === documentIdToRemove) {
+        setSelectedDocumentId(updatedFiles.length > 0 ? updatedFiles[0].id : null);
+      }
+
+    } catch (error) {
+      console.error("Error removing document:", error);
+      // Optionally, show a notification to the user
+    }
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
@@ -248,6 +274,7 @@ function App() {
               togglePanel={() => setLeftPanelOpen(!leftPanelOpen)}
               currentSessionId={currentSessionId}
               onDocumentSelect={setSelectedDocumentId}
+              onRemoveDocument={handleRemoveDocument}
             />
           ) : (
             <ChatSessionList onSelectSession={setCurrentSessionId} currentSessionId={currentSessionId} />

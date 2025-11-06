@@ -2,9 +2,10 @@ import React from 'react';
 import { Button, List, ListItem, ListItemText, Typography, Box, IconButton, Tooltip, Paper } from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import CloseIcon from '@mui/icons-material/Close'; // Import CloseIcon
 import { useNotification } from '../hooks/useNotification';
 
-function DocumentList({ files, onMainPointClick, onFileUpload, isOpen, togglePanel, currentSessionId, onDocumentSelect }) {
+function DocumentList({ files, onMainPointClick, onFileUpload, isOpen, togglePanel, currentSessionId, onDocumentSelect, onRemoveDocument }) {
   const { showError } = useNotification();
 
   const handleDocumentClick = (fileItem) => {
@@ -69,9 +70,13 @@ function DocumentList({ files, onMainPointClick, onFileUpload, isOpen, togglePan
             {files.map((item, index) => (
               <ListItem 
                 key={item.id || index} // Use item.id if available, otherwise index
-                button 
-                onClick={() => handleDocumentClick(item)}
-                disabled={item.summary === "Summarizing..."}
+                secondaryAction={
+                  files.length > 1 ? (
+                    <IconButton edge="end" aria-label="delete" onClick={() => onRemoveDocument(item.id)}>
+                      <CloseIcon />
+                    </IconButton>
+                  ) : null
+                }
               >
                 <ListItemText 
                   primary={item.file.name} 
@@ -84,6 +89,8 @@ function DocumentList({ files, onMainPointClick, onFileUpload, isOpen, togglePan
                     }
                   }} 
                   secondary={item.summary === "Summarizing..." ? "Summarizing..." : null}
+                  onClick={() => handleDocumentClick(item)}
+                  sx={{ cursor: 'pointer' }}
                 />
               </ListItem>
             ))}

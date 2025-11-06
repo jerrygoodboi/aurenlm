@@ -228,6 +228,20 @@ def delete_session(session_id):
     db.session.commit()
     return jsonify({"message": "Session deleted"}), 200
 
+@app.route("/api/documents/<int:document_id>", methods=["DELETE"])
+@login_required
+def delete_document(document_id):
+    document = UploadedFile.query.get_or_404(document_id)
+
+    # Check if the document belongs to a session owned by the current user
+    if document.session.user_id != current_user.id:
+        return jsonify({"message": "Unauthorized"}), 403
+
+    db.session.delete(document)
+    db.session.commit()
+
+    return jsonify({"message": "Document deleted successfully"}), 200
+
 import os
 import requests
 import pdfplumber
