@@ -2,70 +2,30 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Typography, TextField, Button, Paper, Box, useTheme } from '@mui/material';
 import axios from 'axios';
 
-const systemPrompt = "You are AurenLM, a tutor-like chatbot. Your goal is to help users understand their documents. Be helpful, insightful, and ask clarifying questions to guide the user's learning. Respond in a clear and educational manner.";
-
-const MAX_CONVERSATION_LENGTH = 2000; // Max characters before summarizing old conversation
-
 function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap, fileUploadSummary, setFileUploadSummary, currentSessionId, initialMessages }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
-  const [conversation, setConversation] = useState(systemPrompt);
   const theme = useTheme();
-  
-  // State to hold the context for the entire session
-  const [sessionPdfContent, setSessionPdfContent] = useState('');
-  const [sessionContextPrompt, setSessionContextPrompt] = useState('');
 
   // Function to send a query to Gemini and update chat
-  const sendQueryToGemini = useCallback(async (queryText, isInitial = false) => {
+  const sendQueryToGemini = useCallback(async (queryText) => {
     if (!currentSessionId) {
       alert("Please select or create a session first.");
       return;
     }
 
-    let currentConversationState = conversation; // Use a local variable for current state
-
-    // Conditionally summarize old conversation if it gets too long
-    if (currentConversationState.length > MAX_CONVERSATION_LENGTH) {
-      try {
-        const summaryResponse = await axios.post(
-          'http://localhost:5000/summarize_conversation',
-          { conversation_history: currentConversationState, session_id: currentSessionId },
-          { headers: { 'Content-Type': 'application/json' }, withCredentials: true }
-        );
-        if (summaryResponse.data && summaryResponse.data.summary) {
-          currentConversationState = systemPrompt + `
-(Previous conversation summarized: ${summaryResponse.data.summary})\n`;
-          setConversation(currentConversationState); // Update state with summarized conversation
-        }
-      } catch (error) {
-        console.error('Error summarizing conversation:', error);
-        // Continue without summarization if there's an error
-      }
-    }
-
-    // Construct the prompt for the current turn
-    let promptForBackend = queryText; // Initialize with queryText as default
-    if (isInitial && sessionContextPrompt) {
-      promptForBackend = `Regarding the main point "${sessionContextPrompt}", my question is: ${queryText}`;
-      currentConversationState += `User: ${promptForBackend}\nAurenLM: `;
-    } else {
-      currentConversationState += `User: ${promptForBackend}\nAurenLM: `;
-    }
-    
-    setConversation(currentConversationState); // Update conversation state with new user message
-
     try {
+      // Only send the latest user message - backend will reconstruct conversation from DB
       const response = await axios.post(
         'http://localhost:5000/gemini_completion',
         {
-          prompt: currentConversationState, // Use the updated conversation
-          pdfContent: sessionPdfContent,
+          message: queryText, // Only send the latest message, not full conversation
           session_id: currentSessionId
         },
         {
           headers: { 'Content-Type': 'application/json' },
-          withCredentials: true
+          withCredentials: true,
+          timeout: 120000 // 120 seconds timeout
         }
       );
 
@@ -73,26 +33,30 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
         const messageText = typeof response.data.content === 'string' ? response.data.content : JSON.stringify(response.data.content);
         const aiMessage = { text: messageText, sender: 'ai' };
         setMessages(prev => [...prev, aiMessage]);
-        setConversation(prev => prev + messageText + '\n');
       } else {
         const errorMessage = { text: 'No response from the server.', sender: 'ai' };
         setMessages(prev => [...prev, errorMessage]);
       }
     } catch (error) {
       console.error('Error fetching AI response:', error);
-      const errorMessage = { text: 'Error getting response from AI.', sender: 'ai' };
+      let errorText = 'Error getting response from AI.';
+      if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+        errorText = 'Request timed out. The AI is taking too long to respond. Please try again.';
+      } else if (error.response) {
+        errorText = `Error: ${error.response.data?.message || error.response.statusText || 'Server error'}`;
+      } else if (error.request) {
+        errorText = 'Network error. Please check your connection and try again.';
+      }
+      const errorMessage = { text: errorText, sender: 'ai' };
       setMessages(prev => [...prev, errorMessage]);
     }
-  }, [conversation, sessionPdfContent, sessionContextPrompt, currentSessionId]);
+  }, [currentSessionId]);
 
   // This effect sets up the context for a new chat session or loads initial messages.
   useEffect(() => {
-    setConversation(systemPrompt);
     setInput('');
-    setSessionPdfContent(pdfContent || '');
-    setSessionContextPrompt(contextPrompt || '');
-    setMessages(initialMessages || []); // Load initial messages
-  }, [contextPrompt, pdfContent, initialMessages]);
+    setMessages(initialMessages || []); // Load initial messages from session
+  }, [initialMessages]);
 
   // Effect to handle mindmap queries
   useEffect(() => {
@@ -109,7 +73,6 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
     if (fileUploadSummary) {
       const aiMessage = { text: fileUploadSummary, sender: 'ai' };
       setMessages(prev => [...prev, aiMessage]);
-      setConversation(prev => prev + `AurenLM: ${fileUploadSummary}\n`);
       setFileUploadSummary(null); // Clear the summary after it's been used
     }
   }, [fileUploadSummary, setFileUploadSummary]);
@@ -121,7 +84,7 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
     setMessages(prevMessages => [...prevMessages, userMessage]);
     setInput('');
 
-    sendQueryToGemini(input, messages.length === 0); // Pass input and whether it's the first message
+    sendQueryToGemini(input); // Send only the latest message
   };
 
   return (

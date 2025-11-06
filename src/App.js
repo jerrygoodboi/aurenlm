@@ -82,6 +82,7 @@ function App() {
           'Content-Type': 'multipart/form-data',
         },
         withCredentials: true, // Important for sending cookies
+        timeout: 180000, // 180 seconds for file uploads (longer for large files)
       });
       return response.data;
     } catch (error) {

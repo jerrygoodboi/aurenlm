@@ -13,7 +13,7 @@ function ChatSessionList({ onSelectSession, currentSessionId }) {
 
   const fetchSessions = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/sessions', { withCredentials: true });
+      const response = await axios.get('http://localhost:5000/sessions', { withCredentials: true, timeout: 30000 });
       setSessions(response.data);
     } catch (error) {
       console.error("Error fetching sessions:", error);
@@ -28,7 +28,7 @@ function ChatSessionList({ onSelectSession, currentSessionId }) {
 
   const handleCreateSession = async () => {
     try {
-      const response = await axios.post('http://localhost:5000/sessions', { title: newSessionTitle }, { withCredentials: true });
+      const response = await axios.post('http://localhost:5000/sessions', { title: newSessionTitle }, { withCredentials: true, timeout: 30000 });
       if (response.status === 201) {
         fetchSessions();
         setNewSessionTitle('');
@@ -43,7 +43,7 @@ function ChatSessionList({ onSelectSession, currentSessionId }) {
   const handleDeleteSession = async (sessionId) => {
     if (window.confirm("Are you sure you want to delete this session?")) {
       try {
-        await axios.delete(`http://localhost:5000/sessions/${sessionId}`, { withCredentials: true });
+        await axios.delete(`http://localhost:5000/sessions/${sessionId}`, { withCredentials: true, timeout: 30000 });
         fetchSessions();
         if (currentSessionId === sessionId) {
           onSelectSession(null); // Deselect if the current session was deleted

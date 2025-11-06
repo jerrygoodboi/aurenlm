@@ -199,20 +199,55 @@ def delete_session(session_id):
     db.session.commit()
     return jsonify({"message": "Session deleted"}), 200
 
+import os
+import requests
+import pdfplumber
+from flask import Flask, request, jsonify, url_for, redirect, flash
+from flask_cors import CORS
+from werkzeug.utils import secure_filename
+from config import GEMINI_API_URL, SECRET_KEY
+import json
+import re
+from flask_sqlalchemy import SQLAlchemy
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
 def get_gemini_response(prompt):
     print(f"Sending prompt to Gemini: {prompt[:200]}...") # Log first 200 chars of prompt
     headers = {"Content-Type": "application/json"}
     data = {"contents": [{"parts": [{"text": prompt}]}]}
-    response = requests.post(GEMINI_API_URL, headers=headers, json=data)
+
+    print("Attempting to make Gemini API request...")
+    try:
+        # Use a tuple for timeout: (connect_timeout, read_timeout)
+        # This ensures both connection establishment and data reading have timeouts
+        response = requests.post(
+            GEMINI_API_URL, 
+            headers=headers, 
+            json=data, 
+            timeout=(10, 60),  # 10 seconds to connect, 60 seconds to read response
+            verify=True
+        )
+        print("Gemini API request completed.")
+    except requests.exceptions.Timeout as e:
+        print(f"Gemini API request timed out: {e}")
+        return {"error": "Gemini API request timed out. Please try again."}
+    except requests.exceptions.ConnectionError as e:
+        print(f"Gemini API connection error: {e}")
+        return {"error": "Failed to connect to Gemini API. Please check your connection."}
+    except requests.exceptions.RequestException as e:
+        print(f"Gemini API request failed: {e}")
+        return {"error": f"Gemini API request failed: {e}"}
 
     print(f"Raw Gemini API response status: {response.status_code}")
     print(f"Raw Gemini API response body: {response.text[:500]}...") # Log first 500 chars of response
 
     if response.status_code == 200:
+        print("Attempting to parse Gemini API response...")
         try:
             json_response = response.json()
             text_content = json_response["candidates"][0]["content"]["parts"][0]["text"]
             print(f"Parsed Gemini response text: {text_content[:200]}...")
+            print("Successfully parsed Gemini response.")
             return {"text": text_content}
         except json.JSONDecodeError:
             print(f"Gemini response is not JSON. Returning raw text as error.")
@@ -268,22 +303,29 @@ def upload_file():
         return jsonify({"message": "No selected file"}), 400
     if file:
         filename = secure_filename(file.filename)
+        print(f"Received file: {filename}")
         # Temporarily save file to process, then delete
         temp_filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(temp_filepath)
+        print(f"File temporarily saved to: {temp_filepath}")
 
         text = ""
         if filename.lower().endswith('.pdf'):
             with pdfplumber.open(temp_filepath) as pdf:
                 text = '\n'.join(page.extract_text() for page in pdf.pages)
+            print(f"Extracted text from PDF. Length: {len(text)}")
         else:
             with open(temp_filepath, 'r', encoding='utf-8', errors='ignore') as f:
                 text = f.read()
+            print(f"Extracted text from non-PDF file. Length: {len(text)}")
 
         os.remove(temp_filepath) # Clean up temporary file
+        print(f"Temporary file removed: {temp_filepath}")
 
         try:
+            print(f"Original text length before filtering: {len(text)}")
             filtered_text = filter_notes_section(text)
+            print(f"Filtered text length: {len(filtered_text)}")
         except Exception as e:
             print(f"Error filtering notes section: {e}")
             return jsonify({"message": "Error processing document", "details": str(e)}), 500
@@ -293,6 +335,8 @@ def upload_file():
 Text:
 {filtered_text}
 """
+        print(f"Summarization prompt sent to Gemini (first 500 chars): {summarization_prompt[:500]}...")
+        print(f"Full summarization prompt length for upload_file: {len(summarization_prompt)}")
         summary_response = get_gemini_response(summarization_prompt)
 
         print(f"Summary response from get_gemini_response: {summary_response}")
@@ -331,25 +375,54 @@ def parse_text_to_list(text):
 @login_required
 def gemini_completion():
     data = request.json
-    prompt = data.get("prompt", "")
-    pdf_content = data.get("pdfContent", "")
+    user_message_text = data.get("message", "")  # Changed from "prompt" to "message" - just the latest user message
     session_id = data.get("session_id")
 
     if not session_id:
         return jsonify({"message": "Session ID is required"}), 400
     session = ChatSession.query.filter_by(id=session_id, user_id=current_user.id).first_or_404()
 
-    if not prompt:
-        return jsonify({"message": "No prompt provided"}), 400
+    if not user_message_text:
+        return jsonify({"message": "No message provided"}), 400
     
-    # Save user message
-    user_message = ChatMessage(session_id=session.id, sender='user', content=prompt)
+    # Get PDF content from uploaded files in this session (only once, not sent with every request)
+    uploaded_files = UploadedFile.query.filter_by(session_id=session.id).all()
+    pdf_content = ""
+    if uploaded_files:
+        # Combine all file texts
+        pdf_content = "\n\n".join([f.full_text_content for f in uploaded_files if f.full_text_content])
+    
+    # Get conversation history from database (recent messages only, limit to last 20 for performance)
+    # Get last 20 messages by ordering desc and taking first 20, then reverse for chronological order
+    previous_messages = ChatMessage.query.filter_by(session_id=session.id).order_by(ChatMessage.timestamp.desc()).limit(20).all()
+    previous_messages.reverse()  # Reverse to get chronological order (oldest first)
+    
+    # Build conversation context efficiently
+    system_prompt = "You are AurenLM, a tutor-like chatbot. Your goal is to help users understand their documents. Be helpful, insightful, and ask clarifying questions to guide the user's learning. Respond in a clear and educational manner."
+    
+    conversation_parts = [system_prompt]
+    
+    # Add PDF content if available (only once at the start)
+    if pdf_content:
+        conversation_parts.append(f"Document Content:\n{pdf_content}")
+    
+    # Add previous conversation messages
+    for msg in previous_messages:
+        sender_label = "User" if msg.sender == "user" else "AurenLM"
+        conversation_parts.append(f"{sender_label}: {msg.content}")
+    
+    # Add current user message
+    conversation_parts.append(f"User: {user_message_text}")
+    conversation_parts.append("AurenLM:")
+    
+    full_prompt_text = "\n\n".join(conversation_parts)
+    
+    print(f"Full prompt text length for gemini_completion: {len(full_prompt_text)}")
+    
+    # Save user message (non-blocking, but do it before API call in case we need to rollback)
+    user_message = ChatMessage(session_id=session.id, sender='user', content=user_message_text)
     db.session.add(user_message)
     db.session.commit()
-
-    full_prompt_text = prompt
-    if pdf_content: # Always prepend if pdf_content exists
-        full_prompt_text = f"Document Content:\n{pdf_content}\n\n{prompt}"
     
     gemini_response = get_gemini_response(full_prompt_text)
     if "error" in gemini_response:

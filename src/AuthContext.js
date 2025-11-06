@@ -11,7 +11,7 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const checkLoginStatus = async () => {
       try {
-        const response = await axios.get('http://localhost:5000/current_user', { withCredentials: true });
+        const response = await axios.get('http://localhost:5000/current_user', { withCredentials: true, timeout: 30000 });
         if (response.data.username) {
           setIsAuthenticated(true);
           setUser({ username: response.data.username, id: response.data.id });
@@ -33,7 +33,7 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (username, password) => {
     try {
-      const response = await axios.post('http://localhost:5000/login', { username, password }, { withCredentials: true });
+      const response = await axios.post('http://localhost:5000/login', { username, password }, { withCredentials: true, timeout: 30000 });
       if (response.status === 200) {
         setIsAuthenticated(true);
         setUser({ username: response.data.username });
@@ -47,7 +47,7 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (username, password) => {
     try {
-      const response = await axios.post('http://localhost:5000/register', { username, password }, { withCredentials: true });
+      const response = await axios.post('http://localhost:5000/register', { username, password }, { withCredentials: true, timeout: 30000 });
       if (response.status === 201) {
         return { success: true };
       }
@@ -59,7 +59,7 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      await axios.get('http://localhost:5000/logout', { withCredentials: true });
+      await axios.get('http://localhost:5000/logout', { withCredentials: true, timeout: 30000 });
       setIsAuthenticated(false);
       setUser(null);
       return { success: true };

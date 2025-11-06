@@ -1,13 +1,19 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { Paper, Typography, Box, IconButton, Tooltip, Button } from '@mui/material';
+import { Paper, Typography, Box, IconButton, Tooltip, Button, Dialog, DialogContent } from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
 import RemoveCircleOutlineIcon from '@mui/icons-material/RemoveCircleOutline';
-import ReactFlow, { addEdge, applyEdgeChanges, applyNodeChanges, Controls, Background, Handle, Position } from 'reactflow';
+import FullscreenIcon from '@mui/icons-material/Fullscreen';
+import FullscreenExitIcon from '@mui/icons-material/FullscreenExit';
+import ReactFlow, { addEdge, applyEdgeChanges, applyNodeChanges, Controls, Background, Handle, Position, useReactFlow, ReactFlowProvider } from 'reactflow';
 import 'reactflow/dist/style.css';
 import axios from 'axios';
 import { useTheme } from '@mui/material/styles';
+
+
+
+
 
 // Custom Node Component for ReactFlow
 const CustomMindmapNode = ({ data }) => {
@@ -44,12 +50,53 @@ const CustomMindmapNode = ({ data }) => {
   );
 };
 
+const MindmapFlow = ({ nodes, edges, onNodesChange, onEdgesChange, onConnect, nodeTypes, fullMindmapData, buildReactFlowElements, isMindmapFullscreen, setIsMindmapFullscreen, setNodes, setEdges }) => {
+  const { fitView } = useReactFlow();
+
+  useEffect(() => {
+    if (fullMindmapData) {
+      const { rfNodes, rfEdges } = buildReactFlowElements(fullMindmapData);
+      setNodes(rfNodes);
+      setEdges(rfEdges);
+    }
+  }, [fullMindmapData, buildReactFlowElements, fitView, setNodes, setEdges]);
+
+  useEffect(() => {
+    const resizeHandler = () => {
+      try {
+        fitView({ duration: 400, padding: 0.2 });
+      } catch (e) {
+        console.warn("fitView warning suppressed:", e);
+      }
+    };
+
+    window.addEventListener('resize', resizeHandler);
+    return () => window.removeEventListener('resize', resizeHandler);
+  }, [fitView]);
+
+  return (
+    <ReactFlow
+      nodes={nodes}
+      edges={edges}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
+      onConnect={onConnect}
+      nodeTypes={nodeTypes}
+    >
+      <Controls />
+      <Background variant="dots" gap={12} size={1} />
+    </ReactFlow>
+  );
+};
+
 function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, currentSessionId, initialMindmapData }) {
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showMindmap, setShowMindmap] = useState(false); // Controls visibility of the mindmap section
   const [fullMindmapData, setFullMindmapData] = useState(null); // Stores the full hierarchical data
+  const [isMindmapFullscreen, setIsMindmapFullscreen] = useState(false); // Controls full-screen mode
+
 
   const nodeTypes = useMemo(() => ({
     customMindmapNode: CustomMindmapNode,
@@ -82,8 +129,14 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
     }
 
     const query = `Discuss what these sources say about ${clickedNodeLabel}${parentNodeLabel ? `, in the larger context of ${parentNodeLabel}` : ""}`;
+    
+    // Exit fullscreen if active when clicking a node
+    if (isMindmapFullscreen) {
+      setIsMindmapFullscreen(false);
+    }
+    
     onMindmapQuery(query);
-  }, [fullMindmapData, onMindmapQuery]);
+  }, [fullMindmapData, onMindmapQuery, isMindmapFullscreen, setIsMindmapFullscreen]);
 
   // Helper to find a node in the fullMindmapData by its label or ID
   const findNodeInFullData = (data, identifier, searchById = false) => {
@@ -130,21 +183,18 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
   const buildReactFlowElements = useCallback((data) => {
     const rfNodes = [];
     const rfEdges = [];
-    const nodePositions = {}; // To store calculated positions
+    const nodeWidth = 250;
+    const nodeHeight = 70;
+    const horizontalGap = 50;
+    const verticalGap = 30;
 
-    let currentY = 0;
+    // This function will calculate positions for a subtree
+    const layoutTree = (node, x, y, level, parentId = null, parentIsCollapsed = false) => {
+      if (!node) return 0; // Return height of this branch
 
-    const traverseAndBuild = (node, parentId = null, level = 0, parentIsCollapsed = false) => {
-      if (!node) return;
-
-      // A node is rendered if its parent is not collapsed.
-      // The `isCollapsed` property on the node data will be used by the CustomMindmapNode to show/hide children.
       const shouldRenderNode = !parentIsCollapsed;
 
       if (shouldRenderNode) {
-        const xPosition = level * 250; // X position based on level
-        const yPosition = currentY; // Use currentY for Y position
-
         rfNodes.push({
           id: node.id,
           type: 'customMindmapNode',
@@ -155,9 +205,8 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
             onToggleCollapse: () => toggleNodeCollapse(node.id),
             onNodeClick: onNodeClickHandler,
           },
-          position: { x: xPosition, y: yPosition },
+          position: { x: x, y: y },
         });
-        nodePositions[node.id] = { x: xPosition, y: yPosition };
 
         if (parentId) {
           rfEdges.push({
@@ -167,17 +216,30 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
             animated: true,
           });
         }
-        currentY += 70; // Increment Y for the next node
       }
 
-      // Recursively call for children only if the current node is not collapsed
+      let currentY = y + nodeHeight + verticalGap;
+      let totalChildrenHeight = 0;
+
       if (node.children && !node.isCollapsed) {
-        node.children.forEach(child => traverseAndBuild(child, node.id, level + 1, node.isCollapsed));
+        node.children.forEach(child => {
+          const childHeight = layoutTree(child, x + nodeWidth + horizontalGap, currentY, level + 1, node.id, node.isCollapsed);
+          currentY += childHeight;
+          totalChildrenHeight += childHeight;
+        });
       }
+
+      // If node has children and is not collapsed, its height is the sum of children's heights
+      // Otherwise, its height is just its own height
+      return shouldRenderNode ? Math.max(nodeHeight + verticalGap, totalChildrenHeight) : 0;
     };
 
     if (data && data.nodes) {
-      data.nodes.forEach(node => traverseAndBuild(node, null, 0, false)); // Initial call for top-level nodes
+      let currentYOffset = 0;
+      data.nodes.forEach(node => {
+        const branchHeight = layoutTree(node, 0, currentYOffset, 0);
+        currentYOffset += branchHeight;
+      });
     }
     return { rfNodes, rfEdges };
   }, [onNodeClickHandler, toggleNodeCollapse]);
@@ -211,7 +273,7 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
       const response = await axios.post('http://localhost:5000/generate-mindmap', {
         fullText: sessionPdfContent,
         session_id: currentSessionId,
-      }, { withCredentials: true });
+      }, { withCredentials: true, timeout: 120000 });
 
       const mindmapData = response.data;
       console.log("Mindmap data from backend:", mindmapData);
@@ -232,6 +294,15 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
 
     } catch (error) {
       console.error("Error generating mind map:", error);
+      if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+        alert('Request timed out. The AI is taking too long to generate the mind map. Please try again.');
+      } else if (error.response) {
+        alert(`Error: ${error.response.data?.message || error.response.statusText || 'Server error'}`);
+      } else if (error.request) {
+        alert('Network error. Please check your connection and try again.');
+      } else {
+        alert('An unexpected error occurred. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -278,34 +349,79 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
           </Button>
 
           {fullMindmapData && (
-            <Box sx={{ mb: 2 }}>
+            <Box sx={{ mb: 2, display: 'flex', gap: 1 }}>
               <Button
                 variant="outlined"
                 onClick={() => setShowMindmap(!showMindmap)}
               >
                 {showMindmap ? 'Hide Mind Map' : 'Show Mind Map'}
               </Button>
+              {showMindmap && (
+                <Button
+                  variant="outlined"
+                  onClick={() => setIsMindmapFullscreen(true)}
+                  startIcon={<FullscreenIcon />}
+                >
+                  Fullscreen
+                </Button>
+              )}
             </Box>
           )}
 
           {showMindmap && fullMindmapData && (
-            <Box sx={{ width: '100%', flexGrow: 1, border: '1px solid #eee', mt: 2, height: '100%' }}>
-              <ReactFlow
+            <Box sx={{ width: '100%', flexGrow: 1, border: '1px solid #eee', mt: 2, height: '100%', overflow: 'hidden', position: 'relative' }}>
+              <ReactFlowProvider>
+                <MindmapFlow
+                  nodes={nodes}
+                  edges={edges}
+                  onNodesChange={onNodesChange}
+                  onEdgesChange={onEdgesChange}
+                  onConnect={onConnect}
+                  nodeTypes={nodeTypes}
+                  fullMindmapData={fullMindmapData}
+                  buildReactFlowElements={buildReactFlowElements}
+                  isMindmapFullscreen={isMindmapFullscreen}
+                  setIsMindmapFullscreen={setIsMindmapFullscreen}
+                  setNodes={setNodes}
+                  setEdges={setEdges}
+                />
+              </ReactFlowProvider>
+            </Box>
+          )}
+        </Paper>
+      )}
+
+      <Dialog
+        fullScreen
+        open={isMindmapFullscreen}
+        onClose={() => setIsMindmapFullscreen(false)}
+      >
+        <DialogContent sx={{ p: 0, display: 'flex', flexDirection: 'column' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', p: 1 }}>
+            <IconButton onClick={() => setIsMindmapFullscreen(false)}>
+              <FullscreenExitIcon />
+            </IconButton>
+          </Box>
+          <Box sx={{ flexGrow: 1, width: '100%', height: 'calc(100vh - 64px)', overflow: 'hidden', position: 'relative' }}>
+            <ReactFlowProvider>
+              <MindmapFlow
                 nodes={nodes}
                 edges={edges}
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
                 nodeTypes={nodeTypes}
-                fitView
-              >
-                <Controls />
-                <Background variant="dots" gap={12} size={1} />
-              </ReactFlow>
-            </Box>
-          )}
-        </Paper>
-      )}
+                fullMindmapData={fullMindmapData}
+                buildReactFlowElements={buildReactFlowElements}
+                isMindmapFullscreen={isMindmapFullscreen}
+                setIsMindmapFullscreen={setIsMindmapFullscreen}
+                setNodes={setNodes}
+                setEdges={setEdges}
+              />
+            </ReactFlowProvider>
+          </Box>
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 }
