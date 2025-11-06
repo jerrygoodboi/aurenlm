@@ -12,6 +12,7 @@ from flask_login import LoginManager, UserMixin, login_user, logout_user, login_
 from werkzeug.security import generate_password_hash, check_password_hash
 from markdown import markdown
 from weasyprint import HTML, CSS
+from datetime import datetime
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True) # Enable CORS for credentials
@@ -122,23 +123,11 @@ class QuizAttempt(db.Model):
     def __repr__(self):
         return f"QuizAttempt(Quiz ID: {self.quiz_id}, User ID: {self.user_id}, Score: {self.score})"
 
-# Notes model
-class Note(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    document_id = db.Column(db.Integer, db.ForeignKey('uploaded_file.id'), nullable=False)
-    markdown_content = db.Column(db.Text, nullable=False)
-    pdf_path = db.Column(db.String(255), nullable=True)
-    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
-
-    document = db.relationship('UploadedFile', backref=db.backref('notes', lazy=True, cascade="all, delete-orphan"))
-
-    def __repr__(self):
-        return f"Note(Document ID: {self.document_id}, Created At: {self.created_at})"
-
 # Session Notes model
 class SessionNote(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     session_id = db.Column(db.Integer, db.ForeignKey('chat_session.id'), nullable=False)
+    title = db.Column(db.String(255), nullable=True)
     markdown_content = db.Column(db.Text, nullable=False)
     pdf_path = db.Column(db.String(255), nullable=True)
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
@@ -147,6 +136,7 @@ class SessionNote(db.Model):
 
     def __repr__(self):
         return f"SessionNote(Session ID: {self.session_id}, Created At: {self.created_at})"
+
 
 
 
@@ -272,104 +262,31 @@ def delete_document(document_id):
 
     return jsonify({"message": "Document deleted successfully"}), 200
 
-@app.route("/api/generate_notes", methods=["POST"])
-@login_required
-def generate_notes():
-    data = request.json
-    document_id = data.get("document_id")
-    style = data.get("style", "concise")
 
-    if not document_id:
-        return jsonify({"message": "Document ID is required"}), 400
-
-    document = UploadedFile.query.get_or_404(document_id)
-    if document.session.user_id != current_user.id:
+    session = ChatSession.query.get_or_404(session_id)
+    if session.user_id != current_user.id:
         return jsonify({"message": "Unauthorized"}), 403
 
-    if not document.full_text_content:
-        return jsonify({"message": "Document has no content to generate notes from."}), 400
+    first_file = session.files[0] if session.files else None
 
-    # Check if notes already exist for this document and style
-    existing_note = Note.query.filter_by(document_id=document_id).first() # For simplicity, only one note per document for now
-    if existing_note:
-        return jsonify({"message": "Notes already exist for this document.", "note_id": existing_note.id}), 200
+    if not first_file or not first_file.full_text_content:
+        return jsonify({"message": "No content available to generate title."}), 400
 
-    notes_response = generate_notes_from_text(document.full_text_content, style)
+    title_prompt = f"""Generate a short, concise title (5-10 words) for a document with the following content. The title should capture the main subject of the text. Respond with only the title and nothing else.
 
-    if "error" in notes_response:
-        return jsonify({"message": "Error generating notes", "details": notes_response["error"]}), 500
+Content:
+{first_file.full_text_content[:2000]}"""
 
-    markdown_content = notes_response["text"]
+    title_response = get_gemini_response(title_prompt)
 
-    # Generate PDF
-    pdf_filename = f"notes_{document_id}_{style}.pdf"
-    pdf_path = os.path.join(app.config['UPLOAD_FOLDER'], pdf_filename)
-    try:
-        markdown_to_pdf(markdown_content, pdf_path)
-    except Exception as e:
-        return jsonify({"message": "Error converting notes to PDF", "details": str(e)}), 500
+    if "error" in title_response:
+        return jsonify({"message": "Error generating title", "details": title_response["error"]}), 500
 
-    new_note = Note(
-        document_id=document_id,
-        markdown_content=markdown_content,
-        pdf_path=pdf_path
-    )
-    db.session.add(new_note)
+    new_title = title_response["text"].strip().strip('"')
+    session.title = new_title
     db.session.commit()
 
-    return jsonify({"message": "Notes generated successfully", "note_id": new_note.id, "pdf_url": url_for('get_note_pdf', note_id=new_note.id)}), 201
-
-@app.route("/api/notes/<int:note_id>", methods=["GET"])
-@login_required
-def get_note_markdown(note_id):
-    note = Note.query.get_or_404(note_id)
-    if note.document.session.user_id != current_user.id:
-        return jsonify({"message": "Unauthorized"}), 403
-    return jsonify({"id": note.id, "document_id": note.document_id, "markdown_content": note.markdown_content, "created_at": note.created_at.isoformat()}), 200
-
-@app.route("/api/notes/<int:note_id>/pdf", methods=["GET"])
-@login_required
-def get_note_pdf(note_id):
-    note = Note.query.get_or_404(note_id)
-    if note.document.session.user_id != current_user.id:
-        return jsonify({"message": "Unauthorized"}), 403
-    
-    if not note.pdf_path or not os.path.exists(note.pdf_path):
-        return jsonify({"message": "PDF not found"}), 404
-    
-    return send_file(note.pdf_path, as_attachment=True, download_name=os.path.basename(note.pdf_path))
-
-@app.route("/api/documents/<int:document_id>/notes", methods=["GET"])
-@login_required
-def get_notes_for_document(document_id):
-    document = UploadedFile.query.get_or_404(document_id)
-    if document.session.user_id != current_user.id:
-        return jsonify({"message": "Unauthorized"}), 403
-    
-    notes = Note.query.filter_by(document_id=document_id).all()
-    return jsonify([
-        {
-            "id": n.id,
-            "document_id": n.document_id,
-            "created_at": n.created_at.isoformat(),
-            "pdf_url": url_for('get_note_pdf', note_id=n.id, _external=True) if n.pdf_path else None
-        }
-        for n in notes
-    ]), 200
-
-@app.route("/api/notes/<int:note_id>", methods=["DELETE"])
-@login_required
-def delete_note(note_id):
-    note = Note.query.get_or_404(note_id)
-    if note.document.session.user_id != current_user.id:
-        return jsonify({"message": "Unauthorized"}), 403
-    
-    if note.pdf_path and os.path.exists(note.pdf_path):
-        os.remove(note.pdf_path)
-
-    db.session.delete(note)
-    db.session.commit()
-    return jsonify({"message": "Note deleted successfully"}), 200
+    return jsonify({"id": session.id, "title": new_title})
 
 @app.route("/api/sessions/<int:session_id>/generate_notes", methods=["POST"])
 @login_required
@@ -389,27 +306,29 @@ def generate_session_notes(session_id):
     notes_response = generate_notes_from_text(all_docs_text, style)
 
     if "error" in notes_response:
-        return jsonify({"message": "Error generating session notes", "details": notes_response["error"]}), 500
+        return jsonify({"message": "Error generating notes", "details": notes_response["error"]}), 500
 
     markdown_content = notes_response["text"]
+    generated_title = notes_response["title"]
 
     # Generate PDF
-    pdf_filename = f"session_notes_{session_id}_{style}.pdf"
+    pdf_filename = f"session_notes_{session_id}_{style}_{datetime.now().strftime('%Y%m%d%H%M%S')}.pdf"
     pdf_path = os.path.join(app.config['UPLOAD_FOLDER'], pdf_filename)
     try:
         markdown_to_pdf(markdown_content, pdf_path)
     except Exception as e:
-        return jsonify({"message": "Error converting session notes to PDF", "details": str(e)}), 500
+        return jsonify({"message": "Error converting notes to PDF", "details": str(e)}), 500
 
     new_session_note = SessionNote(
-        session_id=session_id,
+        session_id=session.id,
+        title=generated_title,
         markdown_content=markdown_content,
         pdf_path=pdf_path
     )
     db.session.add(new_session_note)
     db.session.commit()
 
-    return jsonify({"message": "Session notes generated successfully", "session_note_id": new_session_note.id, "pdf_url": url_for('get_session_note_pdf', session_note_id=new_session_note.id)}), 201
+    return jsonify({"message": "Session notes generated successfully", "id": new_session_note.id, "title": new_session_note.title, "pdf_url": url_for('get_session_note_pdf', session_note_id=new_session_note.id)}), 201
 
 @app.route("/api/sessions/<int:session_id>/notes", methods=["GET"])
 @login_required
@@ -418,15 +337,16 @@ def get_session_notes(session_id):
     if session.user_id != current_user.id:
         return jsonify({"message": "Unauthorized"}), 403
     
-    session_notes = SessionNote.query.filter_by(session_id=session_id).all()
+    notes = SessionNote.query.filter_by(session_id=session.id).order_by(SessionNote.created_at.desc()).all()
     return jsonify([
         {
-            "id": sn.id,
-            "session_id": sn.session_id,
-            "created_at": sn.created_at.isoformat(),
-            "pdf_url": url_for('get_session_note_pdf', session_note_id=sn.id, _external=True) if sn.pdf_path else None
+            "id": n.id,
+            "session_id": n.session_id,
+            "title": n.title,
+            "created_at": n.created_at.isoformat(),
+            "pdf_url": url_for('get_session_note_pdf', session_note_id=n.id, _external=True) if n.pdf_path else None
         }
-        for sn in session_notes
+        for n in notes
     ]), 200
 
 @app.route("/api/session_notes/<int:session_note_id>/pdf", methods=["GET"])
@@ -454,34 +374,6 @@ def delete_session_note(session_note_id):
     db.session.delete(session_note)
     db.session.commit()
     return jsonify({"message": "Session note deleted successfully"}), 200
-
-@app.route("/api/sessions/<int:session_id>/generate-title", methods=["POST"])
-@login_required
-def generate_session_title(session_id):
-    session = ChatSession.query.get_or_404(session_id)
-    if session.user_id != current_user.id:
-        return jsonify({"message": "Unauthorized"}), 403
-
-    first_file = session.files[0] if session.files else None
-
-    if not first_file or not first_file.full_text_content:
-        return jsonify({"message": "No content available to generate title."}), 400
-
-    title_prompt = f"""Generate a short, concise title (5-10 words) for a document with the following content. The title should capture the main subject of the text. Respond with only the title and nothing else.
-
-Content:
-{first_file.full_text_content[:2000]}"""
-
-    title_response = get_gemini_response(title_prompt)
-
-    if "error" in title_response:
-        return jsonify({"message": "Error generating title", "details": title_response["error"]}), 500
-
-    new_title = title_response["text"].strip().strip('"')
-    session.title = new_title
-    db.session.commit()
-
-    return jsonify({"id": session.id, "title": new_title})
 
 @app.route("/api/sessions/<int:session_id>/rename", methods=["PUT"])
 @login_required
@@ -565,14 +457,31 @@ def get_gemini_response(prompt):
         return {"error": f"Gemini API Error: Status Code {response.status_code}", "response_body": response.text}
 
 def generate_notes_from_text(document_text, style="concise"):
-    prompt = f"""Generate structured, concise study notes in Markdown format from the following document.
+    notes_prompt = f"""Generate structured, concise study notes in Markdown format from the following document.
 The notes should be well-organized with headings, bullet points, and key terms.
 The style should be {style}.
 
 Document:
 {document_text}
 """
-    return get_gemini_response(prompt)
+    notes_response = get_gemini_response(notes_prompt)
+
+    if "error" in notes_response:
+        return notes_response # Propagate error
+
+    markdown_content = notes_response["text"]
+
+    title_prompt = f"""Generate a short, concise title (5-10 words) for the following study notes. The title should capture the main subject of the notes. Respond with only the title and nothing else.
+
+Notes:
+{markdown_content[:2000]}"""
+    title_response = get_gemini_response(title_prompt)
+
+    generated_title = "Untitled Notes"
+    if "text" in title_response:
+        generated_title = title_response["text"].strip().strip('"')
+
+    return {"text": markdown_content, "title": generated_title}
 
 def markdown_to_pdf(markdown_content, output_path):
     html_content = markdown(markdown_content)

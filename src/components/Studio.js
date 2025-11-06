@@ -525,7 +525,7 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
                   onClick={() => window.open(note.pdf_url, '_blank')}
                 >
                   <ListItemText 
-                    primary={`Notes from ${new Date(note.created_at).toLocaleDateString()}`}
+                    primary={note.title || `Notes from ${new Date(note.created_at).toLocaleDateString()}`}
                     secondary="Click to Download PDF"
                   />
                 </ListItem>

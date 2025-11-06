@@ -27,7 +27,6 @@ function App() {
   const [sessionData, setSessionData] = useState(null); // To store loaded session data
   const [selectedDocumentId, setSelectedDocumentId] = useState(null);
   const [sessions, setSessions] = useState([]); // New state for session list
-  const [documentNotes, setDocumentNotes] = useState({}); // New state to store notes for each document {document_id: [note1, note2]}
 
   const { mode, toggleTheme } = useContext(ThemeContext);
   const { isAuthenticated, loading, logout } = useContext(AuthContext);
@@ -44,16 +43,6 @@ function App() {
       }
     }
   }, [isAuthenticated]);
-
-  const fetchNotesForDocument = useCallback(async (docId) => {
-    try {
-      const response = await axios.get(`http://localhost:5000/api/documents/${docId}/notes`, { withCredentials: true });
-      setDocumentNotes(prev => ({ ...prev, [docId]: response.data }));
-    } catch (error) {
-      console.error(`Error fetching notes for document ${docId}:`, error);
-      setDocumentNotes(prev => ({ ...prev, [docId]: [] }));
-    }
-  }, []);
 
   useEffect(() => {
     fetchSessions();
@@ -104,10 +93,6 @@ function App() {
               }));
 
             loadedMessages = [...summaryMessagesToAdd, ...loadedMessages];
-
-            // Fetch notes for each document
-            const notesPromises = filesData.map(f => fetchNotesForDocument(f.id));
-            await Promise.all(notesPromises);
           }
 
           // Populate chat messages
@@ -129,7 +114,6 @@ function App() {
           setSessionData(null);
           setChatContext(null);
           setFiles([]);
-          setDocumentNotes({});
         }
       };
       loadSessionData();
@@ -138,9 +122,8 @@ function App() {
       setSessionData(null);
       setChatContext(null);
       setFiles([]);
-      setDocumentNotes({});
     }
-  }, [currentSessionId, isAuthenticated, fetchNotesForDocument]);
+  }, [currentSessionId, isAuthenticated]);
 
   useEffect(() => {
     if (chatQueryFromMindmap) {
@@ -222,9 +205,6 @@ function App() {
         setFileUploadSummary(result.summary); // Set the summary here
         console.log("Setting fileUploadSummary:", result.summary);
 
-        // After successful upload, fetch notes for the new document
-        fetchNotesForDocument(result.file_id);
-
       } else {
         setFiles(prevFiles =>
           prevFiles.map(item =>
@@ -244,13 +224,6 @@ function App() {
       const updatedFiles = files.filter(file => file.id !== documentIdToRemove);
       setFiles(updatedFiles);
 
-      // Remove notes associated with this document
-      setDocumentNotes(prev => {
-        const newNotes = { ...prev };
-        delete newNotes[documentIdToRemove];
-        return newNotes;
-      });
-
       // Recalculate fullText and update chatContext
       const updatedFullText = updatedFiles.map(f => f.fullText).join('\n\n');
       setChatContext(prev => ({ ...prev, fullText: updatedFullText }));
@@ -263,18 +236,6 @@ function App() {
     } catch (error) {
       console.error("Error removing document:", error);
       // Optionally, show a notification to the user
-    }
-  };
-
-  const handleGenerateNotes = async (documentId) => {
-    try {
-      const response = await axios.post('http://localhost:5000/api/generate_notes', { document_id: documentId, style: "concise" }, { withCredentials: true });
-      // After generating, refetch notes for this document to update the UI
-      await fetchNotesForDocument(documentId);
-      return response.data;
-    } catch (error) {
-      console.error("Error generating notes:", error);
-      throw error;
     }
   };
 
@@ -362,8 +323,6 @@ function App() {
               currentSessionId={currentSessionId}
               onDocumentSelect={setSelectedDocumentId}
               onRemoveDocument={handleRemoveDocument}
-              onGenerateNotes={handleGenerateNotes}
-              documentNotes={documentNotes}
             />
           ) : (
             <ChatSessionList 
@@ -420,6 +379,7 @@ function App() {
           },
         }}>
           {currentSessionId ? (
+            console.log("Session PDF Content passed to Studio:", chatContext?.fullText),
             <Studio 
               isOpen={rightPanelOpen} 
               togglePanel={() => setRightPanelOpen(!rightPanelOpen)} 
