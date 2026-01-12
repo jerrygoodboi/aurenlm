@@ -253,7 +253,18 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
 
   useEffect(() => {
     if (initialMindmapData) {
+      const initializeCollapseState = (nodesArray, level = 0, parentId = null) => {
+        nodesArray.forEach(node => {
+          node.isCollapsed = level > 0;
+          node.parentId = parentId;
+          if (node.children) {
+            initializeCollapseState(node.children, level + 1, node.id);
+          }
+        });
+      };
+      initializeCollapseState(initialMindmapData.nodes);
       setFullMindmapData(initialMindmapData);
+      setShowMindmap(true);
     } else {
       setFullMindmapData(null);
       setShowMindmap(false);
@@ -400,6 +411,7 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
         display: 'flex',
         flexDirection: 'column',
         alignItems: isOpen ? 'flex-start' : 'center',
+        flexShrink: 0,
       }}
     >
       <Box sx={{

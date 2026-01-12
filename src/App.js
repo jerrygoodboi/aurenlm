@@ -3,7 +3,7 @@ import { AppBar, Toolbar, Typography, Container, Box, IconButton, Button, Circul
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import LogoutIcon from '@mui/icons-material/Logout';
-import HistoryIcon from '@mui/icons-material/History'; // Import HistoryIcon
+import HistoryIcon from '@mui/icons-material/History';
 import DocumentList from './components/DocumentList';
 import Chat from './components/Chat';
 import Studio from './components/Studio';
@@ -75,7 +75,7 @@ function App() {
           setSessionData(response.data);
 
           let loadedMessages = response.data.messages.map(msg => ({
-            sender: msg.sender === 'gemini' ? 'ai' : msg.sender,
+            sender: msg.sender === 'gemini' ? 'ai' : msg.sender, // Assuming 'gemini' is the old AI sender
             text: msg.content
           }));
 
@@ -155,7 +155,10 @@ function App() {
       return response.data;
     } catch (error) {
       console.error('Error uploading file:', error);
-      return null;
+      if (error.response) {
+        return error.response.data;
+      }
+      return { message: "An unknown error occurred." };
     }
   };
 
@@ -206,11 +209,17 @@ function App() {
         console.log("Setting fileUploadSummary:", result.summary);
 
       } else {
+        const errorMessage = result.error ? `Error: ${result.error}` : (result.message || "An error occurred during summarization.");
         setFiles(prevFiles =>
           prevFiles.map(item =>
-            item.file === file ? { ...item, summary: "Failed to summarize." } : item
+            item.file === file ? { ...item, summary: errorMessage } : item
           )
         );
+        setChatContext({
+            fullText: "",
+            contextPrompt: null,
+            initialMessage: errorMessage
+        });
       }
     }
   };
@@ -261,7 +270,7 @@ function App() {
   }
 
   if (!isAuthenticated) {
-    return <LoginPage />;
+    return <LoginPage />; 
   }
 
   return (
@@ -336,7 +345,7 @@ function App() {
         <Box sx={{
           flexGrow: 1,
           overflowY: 'auto',
-          boxSizing: 'border-box',
+          boxSizing: 'border-sizing', // Corrected from 'border-sizing' to 'border-box'
           minWidth: 0, // Allow flex item to shrink below its content size
           borderRadius: '8px',
           boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)',
@@ -347,6 +356,7 @@ function App() {
           },
         }}>
           {currentSessionId ? (
+            console.log("Session PDF Content passed to Studio:", chatContext?.fullText),
             <Chat
               key={currentSessionId} // Key to force re-render when session changes
               contextPrompt={chatContext?.contextPrompt}

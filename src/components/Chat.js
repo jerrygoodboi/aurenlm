@@ -39,8 +39,8 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
     scrollToBottom();
   }, [messages, isAIThinking]);
 
-  // Function to send a query to Gemini and update chat
-  const sendQueryToGemini = useCallback(async (queryText) => {
+  // Function to send a query to Mistral and update chat
+  const sendQueryToMistral = useCallback(async (queryText) => {
     if (!currentSessionId) {
       showError("Please select or create a session first.");
       return;
@@ -50,7 +50,7 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
     try {
       // Only send the latest user message - backend will reconstruct conversation from DB
       const response = await axios.post(
-        'http://localhost:5000/gemini_completion',
+        'http://localhost:5000/local_completion', // Updated endpoint
         {
           message: queryText, // Only send the latest message, not full conversation
           session_id: currentSessionId
@@ -135,10 +135,10 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
         id: Date.now()
       };
       setMessages(prevMessages => [...prevMessages, userMessage]);
-      sendQueryToGemini(mindmapQuery);
+      sendQueryToMistral(mindmapQuery); // Updated function call
       setChatQueryFromMindmap(null); // Clear the query after it's been used
     }
-  }, [mindmapQuery, sendQueryToGemini, setChatQueryFromMindmap]);
+  }, [mindmapQuery, sendQueryToMistral, setChatQueryFromMindmap]);
 
   // Effect to handle file upload summaries
   useEffect(() => {
@@ -167,7 +167,7 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
     const messageToSend = input;
     setInput('');
 
-    sendQueryToGemini(messageToSend); // Send only the latest message
+    sendQueryToMistral(messageToSend); // Send only the latest message
   };
 
   const handleKeyPress = (e) => {

@@ -22,6 +22,10 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# project-specific
+AurenLM/
+
 # Python
 __pycache__/
 python_backend/instance/
+python_backend/.env

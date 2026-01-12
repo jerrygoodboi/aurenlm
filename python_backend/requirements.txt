@@ -4,3 +4,4 @@ pdfplumber
 weasyprint
 Flask-Cors
 markdown
+python-dotenv
