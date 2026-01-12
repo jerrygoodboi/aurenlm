@@ -2,3 +2,4 @@ Flask
 requests
 pdfplumber
 Flask-Cors
+python-dotenv

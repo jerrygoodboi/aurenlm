@@ -1,4 +1,7 @@
 import os
+from dotenv import load_dotenv
 
-GEMINI_API_KEY = "AIzaSyCG22aB1LmOdAt93vqgDeR4qY8De8jTing"
-GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+load_dotenv()
+
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
+MISTRAL_API_URL = "https://api.mistral.ai/v1/chat/completions"

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AppBar, Toolbar, Typography, Container, Grid } from '@mui/material';
+import { AppBar, Toolbar, Typography, Container, Box } from '@mui/material';
 import DocumentList from './components/DocumentList';
 import Chat from './components/Chat';
 import Studio from './components/Studio';
@@ -39,7 +39,10 @@ function App() {
       return response.data;
     } catch (error) {
       console.error('Error uploading file:', error);
-      return null;
+      if (error.response) {
+        return error.response.data;
+      }
+      return { message: "An unknown error occurred." };
     }
   };
 
@@ -49,7 +52,7 @@ function App() {
       setFiles(prevFiles => [...prevFiles, { file: file, summary: "Summarizing...", fullText: "" }]);
 
       const result = await uploadAndSummarize(file);
-      if (result) {
+      if (result && result.summary) {
         setFiles(prevFiles =>
           prevFiles.map(item =>
             item.file === file ? { 
@@ -65,18 +68,20 @@ function App() {
           initialMessage: result.summary
         });
       } else {
+        const errorMessage = result.error ? `Error: ${result.error}` : (result.message || "An error occurred during summarization.");
         setFiles(prevFiles =>
           prevFiles.map(item =>
-            item.file === file ? { ...item, summary: "Failed to summarize." } : item
+            item.file === file ? { ...item, summary: errorMessage } : item
           )
         );
+        setChatContext({
+            fullText: "",
+            contextPrompt: null,
+            initialMessage: errorMessage
+        });
       }
     }
   };
-
-  const leftGridWidth = leftPanelOpen ? 2 : 1; // 1 for minimized width
-  const rightGridWidth = rightPanelOpen ? 2 : 1; // 1 for minimized width
-  const centerGridWidth = 12 - leftGridWidth - rightGridWidth;
 
   return (
     <div>
@@ -87,34 +92,28 @@ function App() {
           </Typography>
         </Toolbar>
       </AppBar>
-      <Container disableGutters style={{ marginTop: '2rem' }}>
-        <Grid container spacing={0}>
-          <Grid item xs={leftGridWidth}>
-            <DocumentList
-              files={files}
-              onMainPointClick={handleMainPointClick}
-              onFileUpload={handleFileChange}
-              isOpen={leftPanelOpen}
-              togglePanel={() => setLeftPanelOpen(!leftPanelOpen)}
-            />
-          </Grid>
-          <Grid item xs={centerGridWidth}>
-            <Chat
-              key={chatContext ? chatContext.fullText + chatContext.contextPrompt + chatContext.initialMessage : 'default'}
-              contextPrompt={chatContext?.contextPrompt}
-              pdfContent={chatContext?.fullText}
-              initialMessage={chatContext?.initialMessage}
-            />
-          </Grid>
-          <Grid item xs={rightGridWidth}>
-            <Studio 
-              isOpen={rightPanelOpen} 
-              togglePanel={() => setRightPanelOpen(!rightPanelOpen)} 
-              sessionPdfContent={chatContext?.fullText}
-              onMindmapQuery={setChatQueryFromMindmap}
-            />
-          </Grid>
-        </Grid>
+      <Container maxWidth={false} disableGutters style={{ marginTop: '2rem', display: 'flex', flexDirection: 'row' }}>
+        <DocumentList
+          files={files}
+          onMainPointClick={handleMainPointClick}
+          onFileUpload={handleFileChange}
+          isOpen={leftPanelOpen}
+          togglePanel={() => setLeftPanelOpen(!leftPanelOpen)}
+        />
+        <Box sx={{ flexGrow: 1, p: 2 }}>
+          <Chat
+            key={chatContext ? chatContext.fullText + chatContext.contextPrompt + chatContext.initialMessage : 'default'}
+            contextPrompt={chatContext?.contextPrompt}
+            pdfContent={chatContext?.fullText}
+            initialMessage={chatContext?.initialMessage}
+          />
+        </Box>
+        <Studio 
+          isOpen={rightPanelOpen} 
+          togglePanel={() => setRightPanelOpen(!rightPanelOpen)} 
+          sessionPdfContent={chatContext?.fullText}
+          onMindmapQuery={setChatQueryFromMindmap}
+        />
       </Container>
     </div>
   );

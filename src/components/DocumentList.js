@@ -16,11 +16,12 @@ function DocumentList({ files, onMainPointClick, onFileUpload, isOpen, togglePan
         overflowY: 'auto',
         border: '1px solid #e0e0e0',
         borderRadius: '8px',
-        width: isOpen ? 'auto' : '50px', // Fixed width when collapsed
+        width: isOpen ? '300px' : '50px', // Fixed width when collapsed
         transition: 'width 0.3s ease-in-out',
         display: 'flex',
         flexDirection: 'column',
         alignItems: isOpen ? 'flex-start' : 'center',
+        flexShrink: 0,
       }}
     >
       <Box sx={{ 

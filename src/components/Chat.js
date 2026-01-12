@@ -23,10 +23,15 @@ function Chat({ contextPrompt, pdfContent, initialMessage }) {
     setSessionContextPrompt(contextPrompt || '');
 
     if (initialMessage) {
-      // If there's an initial message (like a summary), display it from the AI.
-      setMessages([{ text: initialMessage, sender: 'ai' }]);
-      // Add the summary to the conversation history as if the AI said it.
-      setConversation(prev => prev + `AurenLM: ${initialMessage}\n`); // Fixed: AurenLM instead of remmacs
+      if (typeof initialMessage === 'object' && initialMessage.error) {
+        setMessages([{ text: `Error: ${initialMessage.error}`, sender: 'ai' }]);
+        setConversation(prev => prev + `AurenLM: Error: ${initialMessage.error}\n`);
+      } else {
+        // If there's an initial message (like a summary), display it from the AI.
+        setMessages([{ text: initialMessage, sender: 'ai' }]);
+        // Add the summary to the conversation history as if the AI said it.
+        setConversation(prev => prev + `AurenLM: ${initialMessage}\n`); // Fixed: AurenLM instead of remmacs
+      }
     } else {
       // Otherwise, it's a new chat from a clicked point, so clear messages for the user to start.
       setMessages([]);
