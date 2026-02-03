@@ -29,3 +29,5 @@ AurenLM/
 __pycache__/
 python_backend/instance/
 python_backend/.env
+/instance/
+/genrated notes/

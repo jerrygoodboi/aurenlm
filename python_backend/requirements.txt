@@ -5,3 +5,5 @@ weasyprint
 Flask-Cors
 markdown
 python-dotenv
+Flask-SQLAlchemy
+Flask-Login

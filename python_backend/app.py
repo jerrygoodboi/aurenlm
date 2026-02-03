@@ -320,6 +320,54 @@ def delete_session(session_id):
     db.session.commit()
     return jsonify({"message": "Session deleted"}), 200
 
+
+@app.route("/api/sessions/<int:session_id>/generate-title", methods=["POST"])
+@login_required
+def generate_session_title(session_id):
+    session = ChatSession.query.get_or_404(session_id)
+    if session.user_id != current_user.id:
+        return jsonify({"message": "Unauthorized"}), 403
+
+    # Check if the title is a default one that needs updating
+    if not session.title.startswith("New Session"):
+        # Title seems to be custom already, so don't change it
+        return jsonify({"message": "Session title is already customized."} ), 200
+
+    content_for_title = ""
+    
+    # Prioritize document content for the title
+    first_file = UploadedFile.query.filter_by(session_id=session.id).first()
+    if first_file and first_file.full_text_content:
+        content_for_title = first_file.full_text_content
+    else:
+        # If no documents, use chat history
+        messages = ChatMessage.query.filter_by(session_id=session.id).order_by(ChatMessage.timestamp.asc()).limit(5).all()
+        if messages:
+            history = "\n".join([f"{m.sender}: {m.content}" for m in messages])
+            content_for_title = history
+
+    if not content_for_title:
+        return jsonify({"message": "Not enough content to generate a title."} ), 400
+
+    title_prompt = f"""Generate a short, descriptive title (4-5 words) for the following content. Respond with only the title and nothing else.
+
+Content:
+{content_for_title[:2000]}"""
+
+    title_response = get_mistral_completion(title_prompt)
+
+    if isinstance(title_response, dict) and "error" in title_response:
+        return jsonify({"message": "Error generating title", "details": title_response["error"]}), 500
+
+    generated_title = title_response.strip().strip('"')
+
+    # Update session title in the database
+    session.title = generated_title
+    db.session.commit()
+
+    return jsonify({"new_title": generated_title, "session_id": session.id})
+
+
 @app.route("/api/documents/<int:document_id>", methods=["DELETE"])
 @login_required
 def delete_document(document_id):
@@ -522,15 +570,9 @@ Document:
     if isinstance(mindmap_response, dict) and "error" in mindmap_response:
         return jsonify({"message": "Error generating mind map", "details": mindmap_response["error"]}), 500
 
-    mindmap_content = mindmap_response
+    mindmap_json = mindmap_response
 
     try:
-        # The LLM might return a string that is a JSON object.
-        # We need to parse it to make sure it's valid JSON.
-        if isinstance(mindmap_content, str) and mindmap_content.startswith("```json") and mindmap_content.endswith("```"):
-            mindmap_content = mindmap_content[7:-3].strip()
-        mindmap_json = json.loads(mindmap_content)
-        
         # Save mindmap data to database
         existing_mindmap = Mindmap.query.filter_by(session_id=session.id).first()
         if existing_mindmap:
@@ -541,8 +583,97 @@ Document:
         db.session.commit()
 
         return jsonify(mindmap_json)
-    except json.JSONDecodeError as e:
-        return jsonify({"message": "Error decoding mind map from LLM response"}), 500
+    except Exception as e:
+        return jsonify({"message": f"Error saving mind map to database: {e}"}), 500
+
+
+@app.route("/api/sessions/<int:session_id>/generate_notes", methods=["POST"])
+@login_required
+def generate_notes_for_session(session_id):
+    session = ChatSession.query.get_or_404(session_id)
+    if session.user_id != current_user.id:
+        return jsonify({"message": "Unauthorized"}), 403
+
+    data = request.json
+    style = data.get("style", "concise")  # Allow frontend to specify style
+
+    all_docs_text = "\n\n".join([f.full_text_content for f in session.files if f.full_text_content])
+
+    if not all_docs_text:
+        return jsonify({"message": "No document content available in this session to generate notes."} ), 400
+
+    notes_data = generate_notes_from_text(all_docs_text, style)
+
+    if "error" in notes_data:
+        return jsonify({"message": "Error generating notes", "details": notes_data["error"]}), 500
+
+    new_note = SessionNote(
+        session_id=session.id,
+        title=notes_data["title"],
+        markdown_content=notes_data["text"]
+    )
+    db.session.add(new_note)
+    db.session.commit()
+
+    return jsonify({
+        "id": new_note.id,
+        "session_id": new_note.session_id,
+        "title": new_note.title,
+        "markdown_content": new_note.markdown_content,
+        "created_at": new_note.created_at.isoformat()
+    })
+
+
+@app.route("/api/sessions/<int:session_id>/notes", methods=["GET"])
+@login_required
+def get_notes_for_session(session_id):
+    session = ChatSession.query.get_or_404(session_id)
+    if session.user_id != current_user.id:
+        return jsonify({"message": "Unauthorized"}), 403
+
+    notes = SessionNote.query.filter_by(session_id=session.id).order_by(SessionNote.created_at.desc()).all()
+    return jsonify([
+        {
+            "id": n.id,
+            "session_id": n.session_id,
+            "title": n.title,
+            "markdown_content": n.markdown_content,
+            "created_at": n.created_at.isoformat()
+        }
+        for n in notes
+    ])
+
+
+@app.route("/api/notes/<int:note_id>/download", methods=["GET"])
+@login_required
+def download_note_pdf(note_id):
+    note = SessionNote.query.get_or_404(note_id)
+    if note.session.user_id != current_user.id:
+        return jsonify({"message": "Unauthorized"}), 403
+
+    instance_folder = os.path.join(app.instance_path)
+    if not os.path.exists(instance_folder):
+        os.makedirs(instance_folder)
+    
+    safe_title = "".join([c for c in note.title if c.isalpha() or c.isdigit() or c.isspace()]).rstrip()
+    pdf_filename = f"{safe_title}.pdf"
+    pdf_path = os.path.join(instance_folder, pdf_filename)
+
+    try:
+        markdown_to_pdf(note.markdown_content, pdf_path)
+        return send_file(
+            pdf_path,
+            as_attachment=True,
+            download_name=pdf_filename,
+            mimetype='application/pdf'
+        )
+    except Exception as e:
+        return jsonify({"message": f"Error generating PDF: {e}"}), 500
+    finally:
+        if os.path.exists(pdf_path):
+            os.remove(pdf_path)
+
+
 
 def generate_notes_from_text(document_text, style="concise"):
     notes_prompt = f"""Generate structured, concise study notes in Markdown format from the following document.
@@ -604,15 +735,8 @@ Document:
     if isinstance(quiz_response, dict) and "error" in quiz_response:
         return None, quiz_response["error"]
 
-    quiz_content = quiz_response
-
-    try:
-        if isinstance(quiz_content, str) and quiz_content.startswith("```json") and quiz_content.endswith("```"):
-            quiz_content = quiz_content[7:-3].strip()
-        quiz_json = json.loads(quiz_content)
-        return quiz_json, None
-    except json.JSONDecodeError as e:
-        return None, "Error decoding quiz from LLM response"
+    quiz_json = quiz_response
+    return quiz_json, None
 
 @app.route("/api/sessions/<int:session_id>/generate_quiz", methods=["POST"])
 @login_required

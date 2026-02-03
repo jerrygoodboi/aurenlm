@@ -59,18 +59,24 @@ const MindmapFlow = ({ nodes, edges, onNodesChange, onEdgesChange, onConnect, no
     }
   }, [fullMindmapData, buildReactFlowElements, fitView, setNodes, setEdges]);
 
+  /*
   useEffect(() => {
-    const resizeHandler = () => {
+    const debouncedFitView = debounce(() => {
       try {
-        fitView({ duration: 400, padding: 0.2 });
+        fitView({ duration: 200, padding: 0.2 });
       } catch (e) {
         console.warn("fitView warning suppressed:", e);
       }
+    }, 100);
+
+    const resizeHandler = () => {
+      debouncedFitView();
     };
 
     window.addEventListener('resize', resizeHandler);
     return () => window.removeEventListener('resize', resizeHandler);
   }, [fitView]);
+  */
 
   return (
     <ReactFlow
@@ -86,6 +92,17 @@ const MindmapFlow = ({ nodes, edges, onNodesChange, onEdgesChange, onConnect, no
     </ReactFlow>
   );
 };
+
+function debounce(fn, ms) {
+  let timer;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      fn.apply(this, args);
+    }, ms);
+  };
+}
 
 function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, currentSessionId, initialMindmapData, documentId }) {
   const [nodes, setNodes] = useState([]);
@@ -534,7 +551,7 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
                 <ListItem 
                   key={note.id}
                   button 
-                  onClick={() => window.open(note.pdf_url, '_blank')}
+                  onClick={() => window.open(`http://localhost:5000/api/notes/${note.id}/download`, '_blank')}
                 >
                   <ListItemText 
                     primary={note.title || `Notes from ${new Date(note.created_at).toLocaleDateString()}`}

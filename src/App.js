@@ -175,10 +175,10 @@ function App() {
         if (isFirstUpload) {
           try {
             const titleResponse = await axios.post(`http://localhost:5000/api/sessions/${currentSessionId}/generate-title`, {}, { withCredentials: true });
-            if (titleResponse.data && titleResponse.data.title) {
+            if (titleResponse.data && titleResponse.data.new_title) {
               // Update the title in the main sessions list
               setSessions(prevSessions => 
-                prevSessions.map(s => s.id === currentSessionId ? { ...s, title: titleResponse.data.title } : s)
+                prevSessions.map(s => s.id === currentSessionId ? { ...s, title: titleResponse.data.new_title } : s)
               );
             }
           } catch (titleError) {
