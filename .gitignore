@@ -24,5 +24,6 @@ yarn-error.log*
 
 # Python
 __pycache__/
-python_backend/instance/python_backend/uploads/
+python_backend/instance/
+python_backend/uploads/
 python_backend/.env
