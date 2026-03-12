@@ -1,99 +1,72 @@
 # AurenLM - Your AI-Powered Study Assistant
 
-AurenLM is an intelligent study assistant designed to help you analyze documents, generate summaries, create mind maps, take notes, and interact with your content through conversational AI. It aims to streamline your learning process by leveraging advanced AI capabilities.
+AurenLM is an advanced, intelligent study platform designed to transform how you learn from documents. By leveraging cutting-edge AI, AurenLM helps you visualize concepts, test your knowledge, and interact with your content in real-time.
 
-## Features
+## ✨ Latest Pro Features
 
-*   **Document Upload & Analysis:** Upload PDF documents for AI-powered processing.
-*   **Smart Summarization:** Get concise summaries of your uploaded documents.
-*   **Conversational AI:** Ask questions about your documents and get intelligent answers.
-*   **Mind Map Generation:** Automatically generate hierarchical mind maps from your document content to visualize key concepts.
-*   **Note Generation:** Create structured study notes on specific topics from your documents.
-*   **Quiz Generation:** Generate multiple-choice quizzes based on your documents to test your understanding.
+*   **⚡ Real-time AI Streaming:** Experience "ChatGPT-style" responses that appear word-by-word, providing instant feedback.
+*   **🎙️ Audio Tutor:** Every AI response can be read out loud using our built-in Text-to-Speech (TTS) engine.
+*   **🧠 Futuristic Neural Mindmaps:** 
+    *   Dynamic, hierarchical visualization of your documents.
+    *   **Neural Network Edges:** Animated "pulses" showing data flow.
+    *   **Topic Color Coding:** Automatic branch-based color schemes.
+    *   **Sub-topic Generation:** Generate targeted quizzes or notes directly from any node in the map.
+*   **📁 Subtle Drag-and-Drop:** Intuitive document management with a modern dropzone interface.
+*   **🌗 Perfect Theme Sync:** Seamless, smooth transitions between Dark and Light modes across the entire UI.
+*   **📝 Precision Notes & Quizzes:** Customizable generation with "Easy/Normal/Hard" difficulties and "Concise/Detailed/Bullet Point" styles.
 
-## Technologies
+## 🛠️ Core Capabilities
+
+*   **Conversational AI:** Context-aware chat that remembers your document history.
+*   **Smart Summarization:** Instantly understand the core of long PDFs.
+*   **Session Management:** Organize your study paths into separate sessions with automatic persistence.
+*   **Modern UX:** Ultra-thin custom scrollbars, glassmorphic surfaces, and micro-interactions.
+
+## 💻 Tech Stack
 
 ### Frontend
+*   **React 19:** High-performance UI library.
+*   **ReactFlow:** Powering our advanced mind mapping engine.
+*   **Material UI (MUI):** Premium component library for sleek design.
+*   **Notistack:** Real-time toast notifications for all system actions.
 
-*   **React:** A JavaScript library for building user interfaces.
-*   **Material UI:** A comprehensive suite of UI tools for a modern and responsive design.
-*   **Axios:** Promise-based HTTP client for the browser and Node.js.
-*   **React Router DOM:** For declarative routing in React applications.
+### Backend
+*   **Python (Flask):** Robust and scalable backend API.
+*   **Google Gemini 2.5 Flash:** Utilizing the latest high-speed Gemini models for reasoning and generation.
+*   **SQLAlchemy:** Database ORM for session and message persistence.
+*   **Web Speech API:** Built-in browser support for our Audio Tutor.
 
-### Backend (Primary - Flask)
-
-*   **Python (Flask):** A lightweight Python web framework.
-*   **Google Gemini API:** Utilized for various AI tasks including summarization, conversational AI, mind map, and note generation.
-*   **pdfplumber:** For extracting text from PDF documents.
-*   **Flask-CORS:** Handling Cross-Origin Resource Sharing.
-*   **Werkzeug:** WSGI utility library for Python.
-
-## Setup and Installation
-
-To get AurenLM up and running on your local machine, follow these steps:
+## 🚀 Quick Start
 
 ### 1. Clone the repository
-
 ```bash
 git clone https://github.com/jerrygoodboi/aurenlm.git 
 cd aurenlm
 ```
 
 ### 2. Frontend Setup
-
-Navigate to the root directory where `package.json` resides and install the Node.js dependencies:
-
 ```bash
 npm install
-# or
-yarn install
+npm start
 ```
 
-### 3. Backend Setup (Python/Flask)
-
-Navigate to the `python_backend` directory and install the required Python packages:
-
+### 3. Backend Setup
 ```bash
 cd python_backend
 pip install -r requirements.txt
 ```
 
-**Environment Variables:**
-
-Create a `.env` file in the `python_backend` directory with your Gemini API URL. Replace `YOUR_GEMINI_API_KEY` with your actual API key.
-
+**Configuration:**
+Create a `.env` file in the `python_backend` directory:
+```env
+GEMINI_API_KEY=your_actual_api_key_here
+SECRET_KEY=your_secure_random_string
 ```
-GEMINI_API_URL="https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=YOUR_GEMINI_API_KEY"
-```
 
-## Usage
-
-### 1. Start the Backend (Python/Flask)
-
-From the `python_backend` directory, run:
-
+**Run Backend:**
 ```bash
 python app.py
 ```
 
-The Flask backend will typically run on `http://localhost:5000`.
-
-### 2. Start the Frontend
-
-From the root directory, run:
-
-```bash
-npm start
-# or
-yarn start
-```
-
-The React development server will start, usually opening in your browser at `http://localhost:3000`.
-
-## Contributing
-
-Contributions are welcome! Please feel free to open issues or submit pull requests.
-
-## License
-
+## 📜 License
 This project is licensed under the MIT License - see the `LICENSE` file for details.
