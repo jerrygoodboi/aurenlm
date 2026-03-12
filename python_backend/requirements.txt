@@ -3,4 +3,7 @@ requests
 pdfplumber
 weasyprint
 Flask-Cors
+python-dotenv
+Flask-SQLAlchemy
+Flask-Login
 markdown

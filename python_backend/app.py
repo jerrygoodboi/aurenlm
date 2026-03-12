@@ -297,8 +297,13 @@ def generate_session_notes(session_id):
 
     data = request.json
     style = data.get("style", "concise")
+    custom_text = data.get("custom_text")
+    custom_title = data.get("custom_title")
 
-    all_docs_text = "\n\n".join([f.full_text_content for f in session.files if f.full_text_content])
+    if custom_text:
+        all_docs_text = custom_text
+    else:
+        all_docs_text = "\n\n".join([f.full_text_content for f in session.files if f.full_text_content])
 
     if not all_docs_text:
         return jsonify({"message": "No document content available in this session to generate notes from."}), 400
@@ -309,7 +314,7 @@ def generate_session_notes(session_id):
         return jsonify({"message": "Error generating notes", "details": notes_response["error"]}), 500
 
     markdown_content = notes_response["text"]
-    generated_title = notes_response["title"]
+    generated_title = custom_title if custom_title else notes_response["title"]
 
     # Generate PDF
     pdf_filename = f"session_notes_{session_id}_{style}_{datetime.now().strftime('%Y%m%d%H%M%S')}.pdf"
@@ -777,8 +782,13 @@ def generate_quiz_for_session(session_id):
 
     data = request.json
     difficulty = data.get("difficulty", "Normal")
+    custom_text = data.get("custom_text")
+    custom_title = data.get("custom_title")
 
-    all_docs_text = "\n\n".join([f.full_text_content for f in session.files if f.full_text_content])
+    if custom_text:
+        all_docs_text = custom_text
+    else:
+        all_docs_text = "\n\n".join([f.full_text_content for f in session.files if f.full_text_content])
 
     if not all_docs_text:
         return jsonify({"message": "No document content available in this session to generate a quiz."}), 400
@@ -787,6 +797,9 @@ def generate_quiz_for_session(session_id):
 
     if error:
         return jsonify({"message": error}), 500
+
+    if custom_title:
+        quiz_data['title'] = custom_title
 
     new_quiz = Quiz(
         session_id=session.id,

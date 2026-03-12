@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { Paper, Typography, Box, IconButton, Tooltip, Button, Dialog, DialogContent, List, ListItem, ListItemText, Divider } from '@mui/material';
+import { Paper, Typography, Box, IconButton, Tooltip, Button, Dialog, DialogContent, List, ListItem, ListItemText, Divider, Menu, MenuItem } from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
@@ -14,13 +14,13 @@ import { useNotification } from '../hooks/useNotification';
 import QuizView from './QuizView'; // Import the new QuizView component
 
 // Custom Node Component for ReactFlow
-const CustomMindmapNode = ({ data }) => {
+const CustomMindmapNode = ({ id, data }) => {
   const { label, hasChildren, isCollapsed, onToggleCollapse, onNodeClick } = data;
   const theme = useTheme();
 
-  const handleNodeClick = useCallback(() => {
-    onNodeClick(label); // Pass the label of the clicked node
-  }, [onNodeClick, label]);
+  const handleNodeClick = useCallback((event) => {
+    onNodeClick(event, { label, id }); // Pass the event and node data
+  }, [onNodeClick, label, id]);
 
   return (
     <Box
@@ -104,6 +104,11 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
   const [quizHistory, setQuizHistory] = useState([]);
   const [sessionNotes, setSessionNotes] = useState([]);
 
+  // Node menu states
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [selectedNode, setSelectedNode] = useState(null);
+  const nodeMenuOpen = Boolean(anchorEl);
+
   const nodeTypes = useMemo(() => ({
     customMindmapNode: CustomMindmapNode,
   }), []);
@@ -121,25 +126,69 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
     [setEdges]
   );
 
-  const onNodeClickHandler = useCallback((clickedNodeLabel) => {
-    const clickedNode = findNodeInFullData(fullMindmapData, clickedNodeLabel);
+  const onNodeClickHandler = useCallback((event, nodeData) => {
+    setAnchorEl(event.currentTarget);
+    setSelectedNode(nodeData);
+  }, []);
+
+  const handleNodeMenuClose = () => {
+    setAnchorEl(null);
+    setSelectedNode(null);
+  };
+
+  const getRecursiveNodeContent = (node, labels = []) => {
+    if (!node) return labels;
+    labels.push(node.label);
+    if (node.children && node.children.length > 0) {
+      node.children.forEach(child => getRecursiveNodeContent(child, labels));
+    }
+    return labels;
+  };
+
+  const handleAskAI = () => {
+    if (!selectedNode) return;
+    
+    const clickedNode = findNodeInFullData(fullMindmapData, selectedNode.id, true);
     let parentNodeLabel = "";
 
     if (clickedNode && clickedNode.parentId) {
-      const parentNode = findNodeInFullData(fullMindmapData, clickedNode.parentId);
+      const parentNode = findNodeInFullData(fullMindmapData, clickedNode.parentId, true);
       if (parentNode) {
         parentNodeLabel = parentNode.label;
       }
     }
 
-    const query = `Discuss what these sources say about ${clickedNodeLabel}${parentNodeLabel ? `, in the larger context of ${parentNodeLabel}` : ""}`;
+    const query = `Discuss what these sources say about ${selectedNode.label}${parentNodeLabel ? `, in the larger context of ${parentNodeLabel}` : ""}`;
     
     if (isMindmapFullscreen) {
       setIsMindmapFullscreen(false);
     }
     
     onMindmapQuery(query);
-  }, [fullMindmapData, onMindmapQuery, isMindmapFullscreen, setIsMindmapFullscreen]);
+    handleNodeMenuClose();
+  };
+
+  const handleNodeQuiz = async () => {
+    if (!selectedNode || !currentSessionId) return;
+    
+    const node = findNodeInFullData(fullMindmapData, selectedNode.id, true);
+    const contentLabels = getRecursiveNodeContent(node);
+    const contextText = `Generate a quiz focusing on: ${contentLabels.join(", ")}. Use the main document as the source material.`;
+    
+    handleNodeMenuClose();
+    await handleGenerateQuiz(contextText, `Quiz: ${selectedNode.label}`);
+  };
+
+  const handleNodeNotes = async () => {
+    if (!selectedNode || !currentSessionId) return;
+    
+    const node = findNodeInFullData(fullMindmapData, selectedNode.id, true);
+    const contentLabels = getRecursiveNodeContent(node);
+    const contextText = `Generate concise notes focusing on: ${contentLabels.join(", ")}. Use the main document as the source material.`;
+    
+    handleNodeMenuClose();
+    await handleGenerateSessionNotes(contextText, `Notes: ${selectedNode.label}`);
+  };
 
   const findNodeInFullData = (data, identifier, searchById = false) => {
     if (!data) return null;
@@ -295,7 +344,7 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
     }
   };
 
-  const handleGenerateQuiz = async () => {
+  const handleGenerateQuiz = async (customText = null, customTitle = null) => {
     if (!currentSessionId) {
       showError("Please select a session first.");
       return;
@@ -303,7 +352,11 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
     setQuizLoading(true);
     try {
       const response = await axios.post(`http://localhost:5000/api/sessions/${currentSessionId}/generate_quiz`, 
-        { difficulty: 'Normal' },
+        { 
+          difficulty: 'Normal',
+          custom_text: customText,
+          custom_title: customTitle
+        },
         { withCredentials: true }
       );
       setCurrentQuiz(response.data);
@@ -344,19 +397,23 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
     fetchSessionNotes();
   }, [fetchQuizHistory, fetchSessionNotes]);
 
-  const handleGenerateSessionNotes = async () => {
+  const handleGenerateSessionNotes = async (customText = null, customTitle = null) => {
     if (!currentSessionId) {
       showError("Please select a session first.");
       return;
     }
-    if (!sessionPdfContent) {
+    if (!sessionPdfContent && !customText) {
       showError("No document content available in this session to generate notes from.");
       return;
     }
     setNotesLoading(true);
     try {
       const response = await axios.post(`http://localhost:5000/api/sessions/${currentSessionId}/generate_notes`, 
-        { style: 'concise' },
+        { 
+          style: 'concise',
+          custom_text: customText,
+          custom_title: customTitle
+        },
         { withCredentials: true, timeout: 120000 }
       );
       showSuccess("Session notes generated successfully!");
@@ -422,7 +479,7 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
           <Button
             variant="contained"
             fullWidth
-            onClick={generateMindmap}
+            onClick={() => generateMindmap()}
             disabled={loading || !sessionPdfContent}
             sx={{ mb: 1 }}
           >
@@ -431,7 +488,7 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
           <Button
             variant="contained"
             fullWidth
-            onClick={handleGenerateQuiz}
+            onClick={() => handleGenerateQuiz()}
             disabled={quizLoading || !documentId}
             sx={{ mb: 1 }}
           >
@@ -440,7 +497,7 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
           <Button
             variant="contained"
             fullWidth
-            onClick={handleGenerateSessionNotes}
+            onClick={() => handleGenerateSessionNotes()}
             disabled={loading || !sessionPdfContent || notesLoading}
             sx={{ mb: 1 }}
           >
@@ -537,6 +594,16 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
 
         </Paper>
       )}
+
+      <Menu
+        anchorEl={anchorEl}
+        open={nodeMenuOpen}
+        onClose={handleNodeMenuClose}
+      >
+        <MenuItem onClick={handleAskAI}>Ask AI</MenuItem>
+        <MenuItem onClick={handleNodeQuiz}>Gen Quiz</MenuItem>
+        <MenuItem onClick={handleNodeNotes}>Gen Notes</MenuItem>
+      </Menu>
 
       <Dialog
         fullScreen
