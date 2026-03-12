@@ -13,6 +13,8 @@ import {
 } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import SendIcon from '@mui/icons-material/Send';
+import VolumeUpIcon from '@mui/icons-material/VolumeUp';
+import StopIcon from '@mui/icons-material/Stop';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { formatDistanceToNow } from 'date-fns';
@@ -28,7 +30,9 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
   const theme = useTheme();
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
-  const { showSuccess, showError } = useNotification();
+  const { showSuccess, showError, showInfo } = useNotification();
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const speechRef = useRef(null);
 
   // Auto-scroll to bottom
   const scrollToBottom = () => {
@@ -39,6 +43,20 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
     scrollToBottom();
   }, [messages, isAIThinking]);
 
+  const handleSpeak = (text) => {
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.onend = () => setIsSpeaking(false);
+    speechRef.current = utterance;
+    setIsSpeaking(true);
+    window.speechSynthesis.speak(utterance);
+  };
+
   // Function to send a query to Gemini and update chat
   const sendQueryToGemini = useCallback(async (queryText) => {
     if (!currentSessionId) {
@@ -47,63 +65,61 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
     }
 
     setIsAIThinking(true);
-    try {
-      // Only send the latest user message - backend will reconstruct conversation from DB
-      const response = await axios.post(
-        'http://localhost:5000/gemini_completion',
-        {
-          message: queryText, // Only send the latest message, not full conversation
-          session_id: currentSessionId
-        },
-        {
-          headers: { 'Content-Type': 'application/json' },
-          withCredentials: true,
-          timeout: 120000 // 120 seconds timeout
-        }
-      );
+    
+    // Create a placeholder message for streaming
+    const aiMessageId = Date.now();
+    const placeholderMessage = { 
+      text: '', 
+      sender: 'ai',
+      timestamp: new Date(),
+      id: aiMessageId,
+      isStreaming: true
+    };
+    setMessages(prev => [...prev, placeholderMessage]);
 
-      if (response.data && response.data.content) {
-        const messageText = typeof response.data.content === 'string' ? response.data.content : JSON.stringify(response.data.content);
-        const aiMessage = { 
-          text: messageText, 
-          sender: 'ai',
-          timestamp: new Date(),
-          id: Date.now()
-        };
-        setMessages(prev => [...prev, aiMessage]);
-        showSuccess("AI responded!");
-      } else {
-        const errorMessage = { 
-          text: 'No response from the server.', 
-          sender: 'ai',
-          timestamp: new Date(),
-          id: Date.now()
-        };
-        setMessages(prev => [...prev, errorMessage]);
-        showError('No response from the server.');
+    try {
+      const response = await fetch('http://localhost:5000/gemini_completion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: queryText,
+          session_id: currentSessionId,
+          stream: true
+        })
+      });
+
+      if (!response.ok) throw new Error('Network response was not ok');
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let fullText = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value, { stream: true });
+        fullText += chunk;
+        
+        setMessages(prev => prev.map(msg => 
+          msg.id === aiMessageId ? { ...msg, text: fullText } : msg
+        ));
       }
+
+      setMessages(prev => prev.map(msg => 
+        msg.id === aiMessageId ? { ...msg, isStreaming: false } : msg
+      ));
+      showSuccess("AI responded!");
+
     } catch (error) {
       console.error('Error fetching AI response:', error);
-      let errorText = 'Error getting response from AI.';
-      if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
-        errorText = 'Request timed out. The AI is taking too long to respond. Please try again.';
-      } else if (error.response) {
-        errorText = `Error: ${error.response.data?.message || error.response.statusText || 'Server error'}`;
-      } else if (error.request) {
-        errorText = 'Network error. Please check your connection and try again.';
-      }
-      const errorMessage = { 
-        text: errorText, 
-        sender: 'ai',
-        timestamp: new Date(),
-        id: Date.now()
-      };
-      setMessages(prev => [...prev, errorMessage]);
-      showError(errorText);
+      showError("Failed to get AI response.");
+      // Remove the placeholder on error
+      setMessages(prev => prev.filter(msg => msg.id !== aiMessageId));
     } finally {
       setIsAIThinking(false);
     }
-  }, [currentSessionId, showError]);
+  }, [currentSessionId, showError, showSuccess]);
 
   // This effect sets up the context for a new chat session or loads initial messages.
   useEffect(() => {
@@ -265,33 +281,53 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
                     color: message.sender === 'user' 
                       ? theme.palette.primary.contrastText 
                       : theme.palette.text.primary,
-                    '&:hover .copy-button': {
+                    '&:hover .message-actions': {
                       opacity: 1,
                     },
                   }}
                 >
-                  <Tooltip title="Copy message">
-                    <IconButton
-                      className="copy-button"
-                      size="small"
-                      onClick={() => handleCopyMessage(message.text)}
-                      sx={{ 
-                        position: 'absolute', 
-                        top: 4, 
-                        right: 4,
-                        opacity: 0,
-                        transition: 'opacity 0.2s',
-                        color: message.sender === 'user' 
-                          ? theme.palette.primary.contrastText 
-                          : theme.palette.text.primary,
-                      }}
-                    >
-                      <ContentCopyIcon fontSize="small" />
-                    </IconButton>
-                  </Tooltip>
+                  <Box className="message-actions" sx={{ 
+                    position: 'absolute', 
+                    top: 4, 
+                    right: 4,
+                    opacity: 0,
+                    transition: 'opacity 0.2s',
+                    display: 'flex',
+                    gap: 0.5,
+                    zIndex: 1
+                  }}>
+                    {message.sender === 'ai' && (
+                      <Tooltip title={isSpeaking ? "Stop" : "Listen"}>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleSpeak(message.text)}
+                          sx={{ 
+                            color: message.sender === 'user' 
+                              ? theme.palette.primary.contrastText 
+                              : theme.palette.text.primary,
+                          }}
+                        >
+                          {isSpeaking ? <StopIcon fontSize="small" /> : <VolumeUpIcon fontSize="small" />}
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                    <Tooltip title="Copy message">
+                      <IconButton
+                        size="small"
+                        onClick={() => handleCopyMessage(message.text)}
+                        sx={{ 
+                          color: message.sender === 'user' 
+                            ? theme.palette.primary.contrastText 
+                            : theme.palette.text.primary,
+                        }}
+                      >
+                        <ContentCopyIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
                   
                   {message.sender === 'ai' ? (
-                    <Box sx={{ pr: 4 }}>
+                    <Box sx={{ pr: message.sender === 'ai' ? 8 : 4 }}>
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>
                         {message.text}
                       </ReactMarkdown>
@@ -314,12 +350,18 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
                     p: 1.5, 
                     borderRadius: '10px', 
                     maxWidth: '70%',
-                    backgroundColor: theme.palette.background.paper
+                    backgroundColor: theme.palette.background.paper,
+                    animation: 'pulse 2s infinite ease-in-out',
+                    '@keyframes pulse': {
+                      '0%': { opacity: 0.6 },
+                      '50%': { opacity: 1 },
+                      '100%': { opacity: 0.6 },
+                    },
                   }}
                 >
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <CircularProgress size={16} />
-                    <Typography variant="body2" color="text.secondary">
+                    <CircularProgress size={16} thickness={5} />
+                    <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
                       AI is thinking...
                     </Typography>
                   </Box>

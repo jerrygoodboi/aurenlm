@@ -11,45 +11,124 @@ import 'reactflow/dist/style.css';
 import axios from 'axios';
 import { useTheme } from '@mui/material/styles';
 import { useNotification } from '../hooks/useNotification';
-import QuizView from './QuizView'; // Import the new QuizView component
+import QuizView from './QuizView'; 
+
+const branchColorsDark = [
+  '#00d2ff', // Neon Blue
+  '#00ff87', // Neon Green
+  '#ff007a', // Neon Pink
+  '#f9d423', // Neon Yellow
+  '#7000ff', // Neon Purple
+  '#ff4e50', // Neon Coral
+];
+
+const branchColorsLight = [
+  '#1a73e8', // Google Blue
+  '#34a853', // Google Green
+  '#ea4335', // Google Red
+  '#f9ab00', // Google Yellow
+  '#a142f4', // Purple
+  '#fa7b17', // Orange
+];
 
 // Custom Node Component for ReactFlow
 const CustomMindmapNode = ({ id, data }) => {
-  const { label, hasChildren, isCollapsed, onToggleCollapse, onNodeClick } = data;
+  const { label, hasChildren, isCollapsed, onToggleCollapse, onNodeClick, branchColor, isDarkMode } = data;
   const theme = useTheme();
+  
+  // Use the color appropriate for the mode
+  const nodeColor = branchColor;
 
   const handleNodeClick = useCallback((event) => {
-    onNodeClick(event, { label, id }); // Pass the event and node data
+    onNodeClick(event, { label, id });
   }, [onNodeClick, label, id]);
 
   return (
     <Box
       sx={{
-        border: `1px solid ${theme.palette.divider}`,
-        borderRadius: '5px',
-        padding: '10px',
-        backgroundColor: theme.palette.background.paper,
+        border: `2px solid ${nodeColor}`,
+        borderRadius: '25px',
+        padding: '12px 20px',
+        backgroundColor: isDarkMode ? 'rgba(20, 20, 20, 0.9)' : 'rgba(255, 255, 255, 0.95)',
+        backdropFilter: 'blur(8px)',
         display: 'flex',
         alignItems: 'center',
         cursor: 'pointer',
         fontWeight: hasChildren ? 'bold' : 'normal',
+        transition: 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), background-color 0.5s ease, border-color 0.5s ease',
+        boxShadow: isDarkMode ? `0 0 12px ${nodeColor}33` : `0 2px 8px rgba(0,0,0,0.1)`,
+        '&:hover': {
+          transform: 'scale(1.08) translateY(-2px)',
+          boxShadow: isDarkMode ? `0 0 25px ${nodeColor}88` : `0 4px 12px rgba(0,0,0,0.15)`,
+          borderColor: isDarkMode ? '#fff' : nodeColor,
+        },
       }}
       onClick={handleNodeClick}
     >
-      <Handle type="target" position={Position.Left} />
-      <Typography variant="body2" sx={{ mr: 1 }}>{label}</Typography>
+      <Handle type="target" position={Position.Left} style={{ background: nodeColor, border: 'none', width: '8px', height: '8px', transition: 'background-color 0.5s ease' }} />
+      <Typography variant="body2" sx={{ mr: 1, color: isDarkMode ? '#fff' : '#202124', fontSize: '0.9rem', transition: 'color 0.5s ease' }}>{label}</Typography>
       {hasChildren && (
-        <IconButton size="small" onClick={(e) => { e.stopPropagation(); onToggleCollapse(); }}>
+        <IconButton 
+          size="small" 
+          onClick={(e) => { e.stopPropagation(); onToggleCollapse(); }}
+          sx={{ 
+            color: nodeColor,
+            transition: 'color 0.5s ease',
+            '&:hover': { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }
+          }}
+        >
           {isCollapsed ? <AddCircleOutlineIcon fontSize="small" /> : <RemoveCircleOutlineIcon fontSize="small" />}
         </IconButton>
       )}
-      <Handle type="source" position={Position.Right} />
+      <Handle type="source" position={Position.Right} style={{ background: nodeColor, border: 'none', width: '8px', height: '8px', transition: 'background-color 0.5s ease' }} />
     </Box>
   );
 };
 
 const MindmapFlow = ({ nodes, edges, onNodesChange, onEdgesChange, onConnect, nodeTypes, fullMindmapData, buildReactFlowElements, isMindmapFullscreen, setIsMindmapFullscreen, setNodes, setEdges }) => {
   const { fitView } = useReactFlow();
+  const theme = useTheme();
+  const isDarkMode = theme.palette.mode === 'dark';
+
+  // Effect to update existing nodes and edges when theme changes without rebuilding full structure
+  useEffect(() => {
+    const colors = isDarkMode ? branchColorsDark : branchColorsLight;
+    
+    setNodes((nds) =>
+      nds.map((node) => {
+        const branchIndex = node.data.branchIndex ?? 0;
+        const newColor = colors[branchIndex % colors.length];
+
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            isDarkMode: isDarkMode,
+            branchColor: newColor,
+          },
+        };
+      })
+    );
+
+    setEdges((eds) =>
+      eds.map((edge) => {
+        // Find source node to get correct branch index for color
+        const sourceNode = nodes.find(n => n.id === edge.source);
+        const branchIndex = sourceNode?.data?.branchIndex ?? 0;
+        const newColor = colors[branchIndex % colors.length];
+
+        return {
+          ...edge,
+          style: {
+            ...edge.style,
+            stroke: newColor,
+            transition: 'stroke 0.5s ease, filter 0.5s ease',
+            filter: isDarkMode ? `drop-shadow(0 0 5px ${newColor})` : 'none'
+          },
+        };
+      })
+    );
+  }, [isDarkMode, setNodes, setEdges]);
 
   useEffect(() => {
     if (fullMindmapData) {
@@ -82,12 +161,20 @@ const MindmapFlow = ({ nodes, edges, onNodesChange, onEdgesChange, onConnect, no
       nodeTypes={nodeTypes}
     >
       <Controls />
-      <Background variant="dots" gap={12} size={1} />
+      <Background 
+        variant="dots" 
+        gap={20} 
+        size={1} 
+        color={isDarkMode ? "#333" : "#ccc"} 
+        style={{ backgroundColor: isDarkMode ? '#0a0a0a' : '#f8f9fa' }} 
+      />
     </ReactFlow>
   );
 };
 
 function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, currentSessionId, initialMindmapData, documentId }) {
+  const theme = useTheme();
+  const isDarkMode = theme.palette.mode === 'dark';
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -260,10 +347,14 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
     const nodeHeight = 70;
     const horizontalGap = 50;
     const verticalGap = 30;
+    const colors = isDarkMode ? branchColorsDark : branchColorsLight;
 
-    const layoutTree = (node, x, y, level, parentId = null, parentIsCollapsed = false) => {
+    const layoutTree = (node, x, y, level, parentId = null, parentIsCollapsed = false, branchColor = null, branchIndex = 0) => {
       if (!node) return 0;
 
+      // Assign a color based on the top-level index if it's a root node
+      let currentBranchColor = branchColor;
+      
       const shouldRenderNode = !parentIsCollapsed;
 
       if (shouldRenderNode) {
@@ -276,6 +367,9 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
             isCollapsed: node.isCollapsed,
             onToggleCollapse: () => toggleNodeCollapse(node.id),
             onNodeClick: onNodeClickHandler,
+            branchColor: currentBranchColor,
+            branchIndex: branchIndex, // Store index for color updates
+            isDarkMode: isDarkMode,
           },
           position: { x: x, y: y },
         });
@@ -286,6 +380,11 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
             source: parentId,
             target: node.id,
             animated: true,
+            style: { 
+              stroke: currentBranchColor, 
+              strokeWidth: 3,
+              filter: isDarkMode ? `drop-shadow(0 0 5px ${currentBranchColor})` : 'none'
+            },
           });
         }
       }
@@ -295,7 +394,7 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
 
       if (node.children && !node.isCollapsed) {
         node.children.forEach(child => {
-          const childHeight = layoutTree(child, x + nodeWidth + horizontalGap, currentY, level + 1, node.id, node.isCollapsed);
+          const childHeight = layoutTree(child, x + nodeWidth + horizontalGap, currentY, level + 1, node.id, node.isCollapsed, currentBranchColor, branchIndex);
           currentY += childHeight;
           totalChildrenHeight += childHeight;
         });
@@ -306,13 +405,14 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
 
     if (data && data.nodes) {
       let currentYOffset = 0;
-      data.nodes.forEach(node => {
-        const branchHeight = layoutTree(node, 0, currentYOffset, 0);
+      data.nodes.forEach((node, index) => {
+        const color = colors[index % colors.length];
+        const branchHeight = layoutTree(node, 0, currentYOffset, 0, null, false, color, index);
         currentYOffset += branchHeight;
       });
     }
     return { rfNodes, rfEdges };
-  }, [onNodeClickHandler, toggleNodeCollapse]);
+  }, [onNodeClickHandler, toggleNodeCollapse, isDarkMode]);
 
   useEffect(() => {
     if (fullMindmapData) {
@@ -498,13 +598,18 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
         </Tooltip>
       </Box>
       {isOpen && (
-        <Paper elevation={3} sx={{ flexGrow: 1, p: 2, width: '100%', height: '100%' }}>
+        <Paper elevation={3} sx={{ flexGrow: 1, p: 2, width: '100%', height: '100%', backgroundColor: theme.palette.background.default }}>
           <Button
             variant="contained"
             fullWidth
             onClick={() => generateMindmap()}
             disabled={loading || !sessionPdfContent}
-            sx={{ mb: 1 }}
+            sx={{ 
+              mb: 1.5, 
+              borderRadius: '10px',
+              transition: 'transform 0.2s',
+              '&:hover': { transform: 'scale(1.02)' }
+            }}
           >
             {loading ? 'Generating...' : 'Generate Mind Map'}
           </Button>
@@ -513,7 +618,12 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
             fullWidth
             onClick={handleGlobalQuizClick}
             disabled={quizLoading || !documentId}
-            sx={{ mb: 1 }}
+            sx={{ 
+              mb: 1.5, 
+              borderRadius: '10px',
+              transition: 'transform 0.2s',
+              '&:hover': { transform: 'scale(1.02)' }
+            }}
           >
             {quizLoading ? 'Generating...' : 'Generate Quiz'}
           </Button>
@@ -522,7 +632,12 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
             fullWidth
             onClick={handleGlobalNotesClick}
             disabled={loading || !sessionPdfContent || notesLoading}
-            sx={{ mb: 1 }}
+            sx={{ 
+              mb: 1.5, 
+              borderRadius: '10px',
+              transition: 'transform 0.2s',
+              '&:hover': { transform: 'scale(1.02)' }
+            }}
           >
             {notesLoading ? 'Generating...' : 'Generate Session Notes'}
           </Button>

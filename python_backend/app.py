@@ -1,7 +1,7 @@
 import os
 import requests
 import pdfplumber
-from flask import Flask, request, jsonify, url_for, redirect, flash, send_file
+from flask import Flask, request, jsonify, url_for, redirect, flash, send_file, Response, stream_with_context
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from config import GEMINI_API_URL, SECRET_KEY
@@ -612,12 +612,58 @@ def parse_text_to_list(text):
             parsed_list.append(line)
     return parsed_list if parsed_list else [text] # Return original text as single item if no list format found
 
+def get_gemini_streaming_response(prompt):
+    print(f"Sending streaming prompt to Gemini: {prompt[:200]}...")
+    headers = {"Content-Type": "application/json"}
+    # The Gemini API supports streaming via a different endpoint
+    # Extract the base URL and API key from the current GEMINI_API_URL
+    # current: https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=...
+    streaming_url = GEMINI_API_URL.replace(":generateContent", ":streamGenerateContent")
+    data = {"contents": [{"parts": [{"text": prompt}]}]}
+
+    try:
+        response = requests.post(
+            streaming_url, 
+            headers=headers, 
+            json=data, 
+            timeout=(10, 120),
+            verify=True,
+            stream=True
+        )
+        
+        full_text = ""
+        for line in response.iter_lines():
+            if line:
+                line_str = line.decode('utf-8').strip()
+                if line_str.startswith(','):
+                    line_str = line_str[1:].strip()
+                if line_str.startswith('['):
+                    line_str = line_str[1:].strip()
+                if line_str.endswith(']'):
+                    line_str = line_str[:-1].strip()
+                
+                if not line_str:
+                    continue
+                    
+                try:
+                    chunk = json.loads(line_str)
+                    if "candidates" in chunk:
+                        text_part = chunk["candidates"][0]["content"]["parts"][0]["text"]
+                        yield text_part
+                except json.JSONDecodeError:
+                    continue
+
+    except Exception as e:
+        print(f"Streaming error: {e}")
+        yield f"Error: {str(e)}"
+
 @app.route("/gemini_completion", methods=["POST"])
 @login_required
 def gemini_completion():
     data = request.json
-    user_message_text = data.get("message", "")  # Changed from "prompt" to "message" - just the latest user message
+    user_message_text = data.get("message", "")
     session_id = data.get("session_id")
+    stream = data.get("stream", False)
 
     if not session_id:
         return jsonify({"message": "Session ID is required"}), 400
@@ -626,51 +672,48 @@ def gemini_completion():
     if not user_message_text:
         return jsonify({"message": "No message provided"}), 400
     
-    # Get PDF content from uploaded files in this session (only once, not sent with every request)
     uploaded_files = UploadedFile.query.filter_by(session_id=session.id).all()
-    pdf_content = ""
-    if uploaded_files:
-        # Combine all file texts
-        pdf_content = "\n\n".join([f.full_text_content for f in uploaded_files if f.full_text_content])
+    pdf_content = "\n\n".join([f.full_text_content for f in uploaded_files if f.full_text_content])
     
-    # Get conversation history from database (recent messages only, limit to last 20 for performance)
-    # Get last 20 messages by ordering desc and taking first 20, then reverse for chronological order
     previous_messages = ChatMessage.query.filter_by(session_id=session.id).order_by(ChatMessage.timestamp.desc()).limit(20).all()
-    previous_messages.reverse()  # Reverse to get chronological order (oldest first)
+    previous_messages.reverse()
     
-    # Build conversation context efficiently
     system_prompt = "You are AurenLM, a tutor-like chatbot. Your goal is to help users understand their documents. Be helpful, insightful, and ask clarifying questions to guide the user's learning. Respond in a clear and educational manner."
-    
     conversation_parts = [system_prompt]
-    
-    # Add PDF content if available (only once at the start)
     if pdf_content:
         conversation_parts.append(f"Document Content:\n{pdf_content}")
-    
-    # Add previous conversation messages
     for msg in previous_messages:
-        sender_label = "User" if msg.sender == "user" else "AurenLM"
-        conversation_parts.append(f"{sender_label}: {msg.content}")
-    
-    # Add current user message
+        conversation_parts.append(f"{'User' if msg.sender == 'user' else 'AurenLM'}: {msg.content}")
     conversation_parts.append(f"User: {user_message_text}")
     conversation_parts.append("AurenLM:")
     
     full_prompt_text = "\n\n".join(conversation_parts)
     
-    print(f"Full prompt text length for gemini_completion: {len(full_prompt_text)}")
-    
-    # Save user message (non-blocking, but do it before API call in case we need to rollback)
+    # Save user message
     user_message = ChatMessage(session_id=session.id, sender='user', content=user_message_text)
     db.session.add(user_message)
     db.session.commit()
-    
-    gemini_response = get_gemini_response(full_prompt_text)
-    if "error" in gemini_response:
-        return jsonify({"message": "Error getting completion from Gemini API", "details": gemini_response["error"]}), 500
+
+    if stream:
+        def generate():
+            full_response = []
+            for chunk in get_gemini_streaming_response(full_prompt_text):
+                full_response.append(chunk)
+                yield chunk
+            
+            # Save the full AI response after streaming finishes
+            final_text = "".join(full_response)
+            gemini_message = ChatMessage(session_id=session.id, sender='gemini', content=final_text)
+            db.session.add(gemini_message)
+            db.session.commit()
+
+        return Response(stream_with_context(generate()), mimetype='text/plain')
     else:
+        gemini_response = get_gemini_response(full_prompt_text)
+        if "error" in gemini_response:
+            return jsonify({"message": "Error getting completion", "details": gemini_response["error"]}), 500
+        
         gemini_text = gemini_response["text"]
-        # Save Gemini response
         gemini_message = ChatMessage(session_id=session.id, sender='gemini', content=gemini_text)
         db.session.add(gemini_message)
         db.session.commit()
