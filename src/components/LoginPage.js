@@ -10,7 +10,7 @@ function LoginPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const { login, register } = useAuth();
-  const { showSuccess } = useNotification();
+  const { showSuccess, showError } = useNotification();
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -18,12 +18,12 @@ function LoginPage() {
 
     if (isRegistering) {
       if (password !== confirmPassword) {
-        setError("Passwords do not match.");
+        showError("Passwords do not match.");
         return;
       }
       const result = await register(username, password);
       if (!result.success) {
-        setError(result.message);
+        showError(result.message);
       } else {
         showSuccess("Registration successful! Please log in.");
         setIsRegistering(false);
@@ -34,7 +34,9 @@ function LoginPage() {
     } else {
       const result = await login(username, password);
       if (!result.success) {
-        setError(result.message);
+        showError(result.message);
+      } else {
+        showSuccess("Login successful! Welcome back.");
       }
     }
   };

@@ -15,6 +15,7 @@ import { ThemeContext } from './ThemeContext';
 import { AuthContext } from './AuthContext';
 import LoginPage from './components/LoginPage';
 import { SnackbarProvider } from 'notistack';
+import { useNotification } from './hooks/useNotification';
 
 function App() {
   const [chatContext, setChatContext] = useState(null);
@@ -31,6 +32,7 @@ function App() {
   const { mode, toggleTheme } = useContext(ThemeContext);
   const { isAuthenticated, loading, logout } = useContext(AuthContext);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const { showSuccess, showError, showInfo } = useNotification();
 
   // Fetch sessions on component mount and when a new session is created
   const fetchSessions = useCallback(async () => {
@@ -232,10 +234,11 @@ function App() {
       if (selectedDocumentId === documentIdToRemove) {
         setSelectedDocumentId(updatedFiles.length > 0 ? updatedFiles[0].id : null);
       }
+      showSuccess("Document removed successfully.");
 
     } catch (error) {
       console.error("Error removing document:", error);
-      // Optionally, show a notification to the user
+      showError("Failed to remove document.");
     }
   };
 
@@ -246,9 +249,11 @@ function App() {
       if (response.status === 201) {
         fetchSessions(); // Refresh the list of sessions
         setCurrentSessionId(response.data.id); // Select the new session
+        showSuccess("New session created!");
       }
     } catch (error) {
       console.error("Error creating new session:", error);
+      showError("Failed to create new session.");
     }
   };
 
@@ -265,11 +270,7 @@ function App() {
   }
 
   return (
-    <SnackbarProvider 
-      maxSnack={3} 
-      anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-      dense
-    >
+    <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
       <KeyboardShortcuts open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <AppBar position="static">
         <Toolbar>
@@ -394,7 +395,7 @@ function App() {
           )}
         </Box>
       </Container>
-    </SnackbarProvider>
+    </Box>
   );
 }
 

@@ -729,10 +729,11 @@ Document:
     mindmap_content = mindmap_response["text"]
 
     try:
-        # The LLM might return a string that is a JSON object.
-        # We need to parse it to make sure it's valid JSON.
-        if mindmap_content.startswith("```json") and mindmap_content.endswith("```"):
-            mindmap_content = mindmap_content[7:-3].strip()
+        # Robust JSON extraction
+        json_match = re.search(r'\{.*\}', mindmap_content, re.DOTALL)
+        if json_match:
+            mindmap_content = json_match.group(0)
+        
         mindmap_json = json.loads(mindmap_content)
         
         # Save mindmap data to database
@@ -746,7 +747,12 @@ Document:
 
         return jsonify(mindmap_json)
     except json.JSONDecodeError as e:
-        return jsonify({"message": "Error decoding mind map from LLM response"}), 500
+        print(f"Mindmap JSON Decode Error: {e}")
+        print(f"Content that failed to parse: {mindmap_content}")
+        return jsonify({"message": f"Error decoding mind map from LLM response: {str(e)}"}), 500
+    except Exception as e:
+        print(f"Unexpected error in generate_mindmap: {e}")
+        return jsonify({"message": str(e)}), 500
 
 def generate_quiz_from_text(document_text, difficulty):
     quiz_prompt = f"""Generate a multiple-choice quiz from the following document. The quiz should have between 5 and 10 questions. The difficulty of the quiz should be '{difficulty}'.
@@ -766,12 +772,20 @@ Document:
     quiz_content = quiz_response["text"]
 
     try:
-        if quiz_content.startswith("```json") and quiz_content.endswith("```"):
-            quiz_content = quiz_content[7:-3].strip()
+        # Robust JSON extraction
+        json_match = re.search(r'\{.*\}', quiz_content, re.DOTALL)
+        if json_match:
+            quiz_content = json_match.group(0)
+        
         quiz_json = json.loads(quiz_content)
         return quiz_json, None
     except json.JSONDecodeError as e:
-        return None, "Error decoding quiz from LLM response"
+        print(f"JSON Decode Error: {e}")
+        print(f"Content that failed to parse: {quiz_content}")
+        return None, f"Error decoding quiz from LLM response: {str(e)}"
+    except Exception as e:
+        print(f"Unexpected error in generate_quiz_from_text: {e}")
+        return None, str(e)
 
 @app.route("/api/sessions/<int:session_id>/generate_quiz", methods=["POST"])
 @login_required

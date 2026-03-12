@@ -71,6 +71,7 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
           id: Date.now()
         };
         setMessages(prev => [...prev, aiMessage]);
+        showSuccess("AI responded!");
       } else {
         const errorMessage = { 
           text: 'No response from the server.', 

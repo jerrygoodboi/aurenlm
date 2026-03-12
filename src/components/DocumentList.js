@@ -6,7 +6,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import { useNotification } from '../hooks/useNotification';
 
 function DocumentList({ files, onMainPointClick, onFileUpload, isOpen, togglePanel, currentSessionId, onDocumentSelect, onRemoveDocument }) {
-  const { showError } = useNotification();
+  const { showError, showInfo } = useNotification();
 
   const handleDocumentClick = (fileItem) => {
     onMainPointClick(fileItem.fullText, null);
@@ -15,6 +15,7 @@ function DocumentList({ files, onMainPointClick, onFileUpload, isOpen, togglePan
 
   const handleFileUploadChange = (event) => {
     if (currentSessionId) {
+      showInfo("Uploading file...");
       onFileUpload(event, currentSessionId);
     } else {
       showError("Please select or create a session first.");

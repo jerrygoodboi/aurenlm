@@ -6,13 +6,20 @@ import App from './App';
 import reportWebVitals from './reportWebVitals';
 import { ThemeProvider } from './ThemeContext';
 import { AuthProvider } from './AuthContext';
+import { SnackbarProvider } from 'notistack';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
     <ThemeProvider>
       <AuthProvider>
-        <App />
+        <SnackbarProvider 
+          maxSnack={3} 
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          dense
+        >
+          <App />
+        </SnackbarProvider>
       </AuthProvider>
     </ThemeProvider>
   </React.StrictMode>

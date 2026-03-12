@@ -94,7 +94,7 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
   const [showMindmap, setShowMindmap] = useState(false);
   const [fullMindmapData, setFullMindmapData] = useState(null);
   const [isMindmapFullscreen, setIsMindmapFullscreen] = useState(false);
-  const { showError, showSuccess } = useNotification();
+  const { showError, showSuccess, showInfo } = useNotification();
 
   const [quizLoading, setQuizLoading] = useState(false);
   const [notesLoading, setNotesLoading] = useState(false);
@@ -104,10 +104,18 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
   const [quizHistory, setQuizHistory] = useState([]);
   const [sessionNotes, setSessionNotes] = useState([]);
 
+  // Global menu states
+  const [quizMenuAnchor, setQuizMenuAnchor] = useState(null);
+  const [notesMenuAnchor, setNotesMenuAnchor] = useState(null);
+
   // Node menu states
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedNode, setSelectedNode] = useState(null);
   const nodeMenuOpen = Boolean(anchorEl);
+
+  // Node menu sub-menu states
+  const [nodeQuizMenuAnchor, setNodeQuizMenuAnchor] = useState(null);
+  const [nodeNotesMenuAnchor, setNodeNotesMenuAnchor] = useState(null);
 
   const nodeTypes = useMemo(() => ({
     customMindmapNode: CustomMindmapNode,
@@ -134,7 +142,19 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
   const handleNodeMenuClose = () => {
     setAnchorEl(null);
     setSelectedNode(null);
+    setNodeQuizMenuAnchor(null);
+    setNodeNotesMenuAnchor(null);
   };
+
+  const handleGlobalQuizClick = (event) => setQuizMenuAnchor(event.currentTarget);
+  const handleGlobalNotesClick = (event) => setNotesMenuAnchor(event.currentTarget);
+  const handleGlobalMenuClose = () => {
+    setQuizMenuAnchor(null);
+    setNotesMenuAnchor(null);
+  };
+
+  const handleNodeQuizClick = (event) => setNodeQuizMenuAnchor(event.currentTarget);
+  const handleNodeNotesClick = (event) => setNodeNotesMenuAnchor(event.currentTarget);
 
   const getRecursiveNodeContent = (node, labels = []) => {
     if (!node) return labels;
@@ -168,26 +188,28 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
     handleNodeMenuClose();
   };
 
-  const handleNodeQuiz = async () => {
+  const handleNodeQuiz = async (difficulty) => {
     if (!selectedNode || !currentSessionId) return;
     
     const node = findNodeInFullData(fullMindmapData, selectedNode.id, true);
     const contentLabels = getRecursiveNodeContent(node);
-    const contextText = `Generate a quiz focusing on: ${contentLabels.join(", ")}. Use the main document as the source material.`;
+    const contextText = `Generate a ${difficulty} difficulty quiz focusing on: ${contentLabels.join(", ")}. Use the main document as the source material.`;
     
+    showInfo(`Generating ${difficulty} quiz for ${selectedNode.label}...`);
     handleNodeMenuClose();
-    await handleGenerateQuiz(contextText, `Quiz: ${selectedNode.label}`);
+    await handleGenerateQuiz(contextText, `Quiz (${difficulty}): ${selectedNode.label}`, difficulty);
   };
 
-  const handleNodeNotes = async () => {
+  const handleNodeNotes = async (style) => {
     if (!selectedNode || !currentSessionId) return;
     
     const node = findNodeInFullData(fullMindmapData, selectedNode.id, true);
     const contentLabels = getRecursiveNodeContent(node);
-    const contextText = `Generate concise notes focusing on: ${contentLabels.join(", ")}. Use the main document as the source material.`;
+    const contextText = `Generate ${style} notes focusing on: ${contentLabels.join(", ")}. Use the main document as the source material.`;
     
+    showInfo(`Generating ${style} notes for ${selectedNode.label}...`);
     handleNodeMenuClose();
-    await handleGenerateSessionNotes(contextText, `Notes: ${selectedNode.label}`);
+    await handleGenerateSessionNotes(contextText, `Notes (${style}): ${selectedNode.label}`, style);
   };
 
   const findNodeInFullData = (data, identifier, searchById = false) => {
@@ -344,7 +366,7 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
     }
   };
 
-  const handleGenerateQuiz = async (customText = null, customTitle = null) => {
+  const handleGenerateQuiz = async (customText = null, customTitle = null, difficulty = 'Normal') => {
     if (!currentSessionId) {
       showError("Please select a session first.");
       return;
@@ -353,7 +375,7 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
     try {
       const response = await axios.post(`http://localhost:5000/api/sessions/${currentSessionId}/generate_quiz`, 
         { 
-          difficulty: 'Normal',
+          difficulty: difficulty,
           custom_text: customText,
           custom_title: customTitle
         },
@@ -361,6 +383,7 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
       );
       setCurrentQuiz(response.data);
       setQuizOpen(true);
+      showSuccess("Quiz generated successfully!");
       fetchQuizHistory(); // Refresh history
     } catch (error) {
       console.error("Error generating quiz:", error);
@@ -397,7 +420,7 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
     fetchSessionNotes();
   }, [fetchQuizHistory, fetchSessionNotes]);
 
-  const handleGenerateSessionNotes = async (customText = null, customTitle = null) => {
+  const handleGenerateSessionNotes = async (customText = null, customTitle = null, style = 'concise') => {
     if (!currentSessionId) {
       showError("Please select a session first.");
       return;
@@ -410,7 +433,7 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
     try {
       const response = await axios.post(`http://localhost:5000/api/sessions/${currentSessionId}/generate_notes`, 
         { 
-          style: 'concise',
+          style: style,
           custom_text: customText,
           custom_title: customTitle
         },
@@ -488,7 +511,7 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
           <Button
             variant="contained"
             fullWidth
-            onClick={() => handleGenerateQuiz()}
+            onClick={handleGlobalQuizClick}
             disabled={quizLoading || !documentId}
             sx={{ mb: 1 }}
           >
@@ -497,12 +520,26 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
           <Button
             variant="contained"
             fullWidth
-            onClick={() => handleGenerateSessionNotes()}
+            onClick={handleGlobalNotesClick}
             disabled={loading || !sessionPdfContent || notesLoading}
             sx={{ mb: 1 }}
           >
             {notesLoading ? 'Generating...' : 'Generate Session Notes'}
           </Button>
+
+          {/* Global Quiz Menu */}
+          <Menu anchorEl={quizMenuAnchor} open={Boolean(quizMenuAnchor)} onClose={handleGlobalMenuClose}>
+            <MenuItem onClick={() => { handleGenerateQuiz(null, null, 'Easy'); handleGlobalMenuClose(); }}>Easy</MenuItem>
+            <MenuItem onClick={() => { handleGenerateQuiz(null, null, 'Normal'); handleGlobalMenuClose(); }}>Normal</MenuItem>
+            <MenuItem onClick={() => { handleGenerateQuiz(null, null, 'Hard'); handleGlobalMenuClose(); }}>Hard</MenuItem>
+          </Menu>
+
+          {/* Global Notes Menu */}
+          <Menu anchorEl={notesMenuAnchor} open={Boolean(notesMenuAnchor)} onClose={handleGlobalMenuClose}>
+            <MenuItem onClick={() => { handleGenerateSessionNotes(null, null, 'concise'); handleGlobalMenuClose(); }}>Concise</MenuItem>
+            <MenuItem onClick={() => { handleGenerateSessionNotes(null, null, 'detailed'); handleGlobalMenuClose(); }}>Detailed</MenuItem>
+            <MenuItem onClick={() => { handleGenerateSessionNotes(null, null, 'bullet points'); handleGlobalMenuClose(); }}>Bullet Points</MenuItem>
+          </Menu>
 
           {fullMindmapData && (
             <Box sx={{ mb: 2, display: 'flex', gap: 1 }}>
@@ -601,8 +638,32 @@ function Studio({ isOpen, togglePanel, sessionPdfContent, onMindmapQuery, curren
         onClose={handleNodeMenuClose}
       >
         <MenuItem onClick={handleAskAI}>Ask AI</MenuItem>
-        <MenuItem onClick={handleNodeQuiz}>Gen Quiz</MenuItem>
-        <MenuItem onClick={handleNodeNotes}>Gen Notes</MenuItem>
+        <MenuItem onClick={handleNodeQuizClick}>Gen Quiz ▶</MenuItem>
+        <MenuItem onClick={handleNodeNotesClick}>Gen Notes ▶</MenuItem>
+      </Menu>
+
+      {/* Node Quiz Sub-menu */}
+      <Menu
+        anchorEl={nodeQuizMenuAnchor}
+        open={Boolean(nodeQuizMenuAnchor)}
+        onClose={() => setNodeQuizMenuAnchor(null)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <MenuItem onClick={() => handleNodeQuiz('Easy')}>Easy</MenuItem>
+        <MenuItem onClick={() => handleNodeQuiz('Normal')}>Normal</MenuItem>
+        <MenuItem onClick={() => handleNodeQuiz('Hard')}>Hard</MenuItem>
+      </Menu>
+
+      {/* Node Notes Sub-menu */}
+      <Menu
+        anchorEl={nodeNotesMenuAnchor}
+        open={Boolean(nodeNotesMenuAnchor)}
+        onClose={() => setNodeNotesMenuAnchor(null)}
+        anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <MenuItem onClick={() => handleNodeNotes('concise')}>Concise</MenuItem>
+        <MenuItem onClick={() => handleNodeNotes('detailed')}>Detailed</MenuItem>
+        <MenuItem onClick={() => handleNodeNotes('bullet points')}>Bullet Points</MenuItem>
       </Menu>
 
       <Dialog
