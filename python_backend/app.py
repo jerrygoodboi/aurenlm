@@ -14,8 +14,25 @@ from markdown import markdown
 from weasyprint import HTML, CSS
 from datetime import datetime
 
+import logging
+from logging.handlers import RotatingFileHandler
+
 app = Flask(__name__)
 CORS(app, supports_credentials=True) # Enable CORS for credentials
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+# File handler for logging
+if not os.path.exists('logs'):
+    os.makedirs('logs')
+file_handler = RotatingFileHandler('logs/aurenlm.log', maxBytes=10240, backupCount=10)
+file_handler.setFormatter(formatter)
+file_handler.setLevel(logging.INFO)
+app.logger.addHandler(file_handler)
+
+app.logger.info('AurenLM Startup')
 
 app.config['SECRET_KEY'] = SECRET_KEY
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///site.db' # Using SQLite for simplicity
@@ -50,9 +67,9 @@ class User(db.Model, UserMixin):
 # Chat Session model
 class ChatSession(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
     title = db.Column(db.String(100), nullable=False)
-    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp(), index=True)
 
     user = db.relationship('User', backref=db.backref('chat_sessions', lazy=True))
     messages = db.relationship('ChatMessage', backref='session', lazy=True, cascade="all, delete-orphan")
@@ -65,10 +82,10 @@ class ChatSession(db.Model):
 # Chat Message model
 class ChatMessage(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    session_id = db.Column(db.Integer, db.ForeignKey('chat_session.id'), nullable=False)
+    session_id = db.Column(db.Integer, db.ForeignKey('chat_session.id'), nullable=False, index=True)
     sender = db.Column(db.String(10), nullable=False) # 'user' or 'gemini'
     content = db.Column(db.Text, nullable=False)
-    timestamp = db.Column(db.DateTime, default=db.func.current_timestamp())
+    timestamp = db.Column(db.DateTime, default=db.func.current_timestamp(), index=True)
 
     def __repr__(self):
         return f"ChatMessage(Session ID: {self.session_id}, Sender: {self.sender})"
@@ -76,11 +93,11 @@ class ChatMessage(db.Model):
 # Uploaded File model
 class UploadedFile(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    session_id = db.Column(db.Integer, db.ForeignKey('chat_session.id'), nullable=False)
+    session_id = db.Column(db.Integer, db.ForeignKey('chat_session.id'), nullable=False, index=True)
     filename = db.Column(db.String(255), nullable=False)
     summary = db.Column(db.Text, nullable=True)
     full_text_content = db.Column(db.Text, nullable=True) # Store full text for context
-    uploaded_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    uploaded_at = db.Column(db.DateTime, default=db.func.current_timestamp(), index=True)
 
     def __repr__(self):
         return f"UploadedFile(Session ID: {self.session_id}, Filename: {self.filename})"
@@ -140,6 +157,20 @@ class SessionNote(db.Model):
 
 
 
+
+@app.route("/health")
+def health_check():
+    return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()}), 200
+
+@app.route("/ready")
+def readiness_check():
+    try:
+        # Check database connection
+        db.session.execute(db.text('SELECT 1'))
+        return jsonify({"status": "ready", "database": "connected"}), 200
+    except Exception as e:
+        app.logger.error(f"Readiness check failed: {e}")
+        return jsonify({"status": "not ready", "database": "disconnected", "error": str(e)}), 503
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -262,7 +293,9 @@ def delete_document(document_id):
 
     return jsonify({"message": "Document deleted successfully"}), 200
 
-
+@app.route("/api/sessions/<int:session_id>/generate-title", methods=["POST"])
+@login_required
+def generate_title(session_id):
     session = ChatSession.query.get_or_404(session_id)
     if session.user_id != current_user.id:
         return jsonify({"message": "Unauthorized"}), 403
@@ -398,18 +431,6 @@ def rename_session(session_id):
 
     return jsonify({"id": session.id, "title": session.title})
 
-import os
-import requests
-import pdfplumber
-from flask import Flask, request, jsonify, url_for, redirect, flash
-from flask_cors import CORS
-from werkzeug.utils import secure_filename
-from config import GEMINI_API_URL, SECRET_KEY
-import json
-import re
-from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
-from werkzeug.security import generate_password_hash, check_password_hash
 def get_gemini_response(prompt):
     print(f"Sending prompt to Gemini: {prompt[:200]}...") # Log first 200 chars of prompt
     headers = {"Content-Type": "application/json"}
@@ -613,11 +634,9 @@ def parse_text_to_list(text):
     return parsed_list if parsed_list else [text] # Return original text as single item if no list format found
 
 def get_gemini_streaming_response(prompt):
-    print(f"Sending streaming prompt to Gemini: {prompt[:200]}...")
+    print(f"--- FULL PROMPT SENT TO GEMINI ---\n{prompt}\n----------------------------------")
     headers = {"Content-Type": "application/json"}
     # The Gemini API supports streaming via a different endpoint
-    # Extract the base URL and API key from the current GEMINI_API_URL
-    # current: https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=...
     streaming_url = GEMINI_API_URL.replace(":generateContent", ":streamGenerateContent")
     data = {"contents": [{"parts": [{"text": prompt}]}]}
 
@@ -631,27 +650,45 @@ def get_gemini_streaming_response(prompt):
             stream=True
         )
         
-        full_text = ""
-        for line in response.iter_lines():
-            if line:
-                line_str = line.decode('utf-8').strip()
-                if line_str.startswith(','):
-                    line_str = line_str[1:].strip()
-                if line_str.startswith('['):
-                    line_str = line_str[1:].strip()
-                if line_str.endswith(']'):
-                    line_str = line_str[:-1].strip()
+        print(f"Gemini streaming status code: {response.status_code}")
+        
+        if response.status_code != 200:
+            error_body = response.text
+            print(f"Gemini streaming error body: {error_body}")
+            yield f"Error: Gemini API returned status code {response.status_code}. {error_body}"
+            return
+
+        # Use JSONDecoder.raw_decode for robust streaming JSON parsing
+        decoder = json.JSONDecoder()
+        buffer = ""
+        
+        for chunk in response.iter_content(chunk_size=4096):
+            if chunk:
+                buffer += chunk.decode('utf-8')
                 
-                if not line_str:
-                    continue
-                    
-                try:
-                    chunk = json.loads(line_str)
-                    if "candidates" in chunk:
-                        text_part = chunk["candidates"][0]["content"]["parts"][0]["text"]
-                        yield text_part
-                except json.JSONDecodeError:
-                    continue
+                # Remove leading characters that aren't part of the JSON object
+                buffer = buffer.lstrip('[\n\r ,')
+                
+                while buffer:
+                    try:
+                        # raw_decode finds the first valid JSON object in the buffer
+                        obj, index = decoder.raw_decode(buffer)
+                        
+                        # Extract text if present
+                        if "candidates" in obj and obj["candidates"]:
+                            candidate = obj["candidates"][0]
+                            if "content" in candidate and "parts" in candidate["content"]:
+                                text_part = candidate["content"]["parts"][0].get("text", "")
+                                if text_part:
+                                    # print(f"Yielding text: {text_part}")
+                                    yield text_part
+                        
+                        # Move the buffer past the parsed object and clean it
+                        buffer = buffer[index:].lstrip('[\n\r ,')
+                    except json.JSONDecodeError:
+                        # Incomplete JSON object, wait for more chunks
+                        break
+
 
     except Exception as e:
         print(f"Streaming error: {e}")
@@ -669,8 +706,11 @@ def gemini_completion():
         return jsonify({"message": "Session ID is required"}), 400
     session = ChatSession.query.filter_by(id=session_id, user_id=current_user.id).first_or_404()
 
-    if not user_message_text:
+    if not user_message_text or not user_message_text.strip():
         return jsonify({"message": "No message provided"}), 400
+    
+    if len(user_message_text) > 5000:
+        return jsonify({"message": "Message too long (max 5000 characters)"}), 400
     
     uploaded_files = UploadedFile.query.filter_by(session_id=session.id).all()
     pdf_content = "\n\n".join([f.full_text_content for f in uploaded_files if f.full_text_content])

@@ -17,8 +17,6 @@ import VolumeUpIcon from '@mui/icons-material/VolumeUp';
 import StopIcon from '@mui/icons-material/Stop';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { formatDistanceToNow } from 'date-fns';
-import axios from 'axios';
 import { useNotification } from '../hooks/useNotification';
 import { EmptyChatState } from './EmptyState';
 
@@ -30,7 +28,7 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
   const theme = useTheme();
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
-  const { showSuccess, showError, showInfo } = useNotification();
+  const { showSuccess, showError } = useNotification();
   const [isSpeaking, setIsSpeaking] = useState(false);
   const speechRef = useRef(null);
 
@@ -67,7 +65,7 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
     setIsAIThinking(true);
     
     // Create a placeholder message for streaming
-    const aiMessageId = Date.now();
+    const aiMessageId = `ai-${Date.now()}`;
     const placeholderMessage = { 
       text: '', 
       sender: 'ai',
@@ -81,6 +79,7 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
       const response = await fetch('http://localhost:5000/gemini_completion', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', // Crucial for session cookies
         body: JSON.stringify({
           message: queryText,
           session_id: currentSessionId,
@@ -101,11 +100,14 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
         const chunk = decoder.decode(value, { stream: true });
         fullText += chunk;
         
+        const currentText = fullText; // Capture to local variable for closure
         setMessages(prev => prev.map(msg => 
-          msg.id === aiMessageId ? { ...msg, text: fullText } : msg
+          msg.id === aiMessageId ? { ...msg, text: currentText } : msg
         ));
       }
 
+      console.log("Final fullText received:", fullText);
+      
       setMessages(prev => prev.map(msg => 
         msg.id === aiMessageId ? { ...msg, isStreaming: false } : msg
       ));
@@ -149,7 +151,7 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
         text: mindmapQuery, 
         sender: 'user',
         timestamp: new Date(),
-        id: Date.now()
+        id: `user-mm-${Date.now()}`
       };
       setMessages(prevMessages => [...prevMessages, userMessage]);
       sendQueryToGemini(mindmapQuery);
@@ -178,7 +180,7 @@ function Chat({ contextPrompt, pdfContent, mindmapQuery, setChatQueryFromMindmap
       text: input, 
       sender: 'user',
       timestamp: new Date(),
-      id: Date.now()
+      id: `user-${Date.now()}`
     };
     setMessages(prevMessages => [...prevMessages, userMessage]);
     const messageToSend = input;
